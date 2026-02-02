@@ -1,0 +1,351 @@
+docS/ORACLE_OPERATORS_GUIDE
+
+📄 Oracle Operator Guide
+Sovereign Lightning Oracle (SLO) — v1
+
+Purpose of This Document
+This guide explains how to operate an SLO oracle in v1 of the protocol.
+It is written for:
+infrastructure engineers
+
+
+Lightning node operators
+
+
+quantitative engineers
+
+
+anyone already ingesting BTC price data
+
+
+This guide assumes technical competence and does not attempt to simplify concepts at the expense of correctness.
+
+What an SLO Oracle Is (and Is Not)
+An SLO Oracle is
+an HTTP service
+
+
+that produces signed factual assertions
+
+
+in a canonical format
+
+
+after verifying Lightning payment
+
+
+An SLO Oracle is not
+a price feed API
+
+
+a publisher of “the true price”
+
+
+a consensus participant
+
+
+a protocol authority
+
+
+a trusted third party
+
+
+Each oracle is independent. Clients choose which oracles to trust.
+
+Oracle Responsibilities (v1)
+As an oracle operator, you are responsible for:
+Observing data
+
+
+In v1: BTC/USD pricing
+
+
+Using your chosen methodology
+
+
+Committing to methodology
+
+
+Explicit sources (e.g. exchanges)
+
+
+Explicit aggregation rule (e.g. median)
+
+
+Explicit time semantics
+
+
+Signing canonical messages
+
+
+secp256k1 signatures
+
+
+Deterministic canonical formatting
+
+
+Enforcing payment-before-release
+
+
+No signed data without payment confirmation
+
+
+
+What v1 Does Not Require
+You are not required to:
+match other oracles’ prices
+
+
+provide uptime guarantees
+
+
+participate in governance
+
+
+register anywhere
+
+
+coordinate with other operators
+
+
+stake capital or tokens
+
+
+You may operate anonymously or publicly.
+
+Running the Reference Oracle (v1)
+Requirements
+Python 3.10+
+
+
+A Lightning node (or simulated backend)
+
+
+Network connectivity
+
+
+Start the oracle
+python oracle.py <port>
+
+Example:
+python oracle.py 8000
+
+On startup, the oracle will print:
+its public key (compressed hex)
+
+
+the listening address
+
+
+This public key is how clients identify you.
+
+Endpoints (v1)
+GET /quote
+Requests a quote for BTCUSD data.
+Returns:
+domain
+
+
+price (in sats)
+
+
+invoice ID
+
+
+Lightning invoice (or simulation)
+
+
+
+GET /paid/{invoice_id}
+Returns signed data only after payment is verified.
+If payment has not occurred:
+HTTP 402 is returned
+
+
+no data is released
+
+
+This invariant is mandatory.
+
+Canonical Message Format
+Oracles must sign messages exactly as defined in the protocol spec.
+Example:
+v1|BTCUSD|43250.67|USD|2|2026-02-02T16:00:00Z|890456|coinbase,kraken,bitstamp|median
+
+Any deviation in formatting will cause clients to reject the response.
+
+Key Management
+v1 default
+Keys are generated at oracle startup
+
+
+Keys are held in memory
+
+
+Operator options
+Persist keys to disk
+
+
+Use HSMs
+
+
+Rotate keys manually
+
+
+SLO does not prescribe key management beyond:
+the public key identifies the oracle
+
+Lightning Payments
+v1 expectations
+One invoice per request
+
+
+Payment must be verified before release
+
+
+Micropayments are acceptable and expected
+
+
+Node requirements
+Ability to generate invoices
+
+
+Ability to detect payment settlement
+
+
+Routing, channel management, and uptime are operator concerns, not protocol requirements.
+
+Pricing Your Oracle
+You may price:
+cheaply (high volume, low margin)
+
+
+expensively (low volume, high assurance)
+
+
+differently per domain (v2+)
+
+
+In v1:
+pricing is per request
+
+
+pricing is expressed in sats
+
+
+Clients decide whether to pay.
+
+Independence and Plurality
+You are not expected to agree with other oracles.
+In fact:
+disagreement is a feature, not a failure.
+Clients use aggregation to resolve differences.
+If your oracle always matches others exactly, clients should be skeptical.
+
+Failure Modes
+If your oracle:
+goes offline
+
+
+returns errors
+
+
+returns unexpected formats
+
+
+Clients may:
+exclude you
+
+
+retry later
+
+
+replace you
+
+
+There are no penalties enforced by SLO.
+
+Security Expectations
+Oracles should:
+protect private keys
+
+
+validate inbound requests
+
+
+avoid leaking internal state
+
+
+rate-limit if necessary
+
+
+SLO does not enforce security policies beyond signature verification.
+
+Compliance and Liability
+SLO:
+does not make claims about correctness
+
+
+does not guarantee outcomes
+
+
+does not enforce SLAs
+
+
+You are publishing signed assertions, not advice.
+
+How Clients Find You (v1)
+There is no global registry.
+Clients may find oracles via:
+documentation
+
+
+recommendations
+
+
+social trust
+
+
+prior relationships
+
+
+This is intentional.
+
+When to Stop Operating
+If you no longer wish to operate:
+stop the service
+
+
+clients will naturally exclude you
+
+
+No coordination required.
+
+v1 Summary
+An SLO oracle:
+sells signed facts
+
+
+enforces payment-before-release
+
+
+operates independently
+
+
+competes on methodology and reliability
+
+
+That’s all.
+
+Final Note to Operators
+SLO works only if:
+oracles are honest about methodology
+
+
+clients are explicit about trust
+
+
+no one pretends there is a single “true feed”
+
+
+If that resonates, you are the intended operator.
