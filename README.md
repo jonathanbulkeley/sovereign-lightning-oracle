@@ -142,3 +142,5 @@ No commitments or incentives are implied.
 
 The v1 reference implementation is currently unlicensed while the
 protocol abstraction is being validated.
+
+The repository includes both a deterministic reference oracle and a live BTCUSD reference oracle to demonstrate protocol behavior under real market conditions.
