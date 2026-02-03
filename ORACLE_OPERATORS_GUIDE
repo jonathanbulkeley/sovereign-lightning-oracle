@@ -352,7 +352,7 @@ If that resonates, you are the intended operator.
 
 ## Reference Implementations
 
-This repository includes two oracle implementations:
+This repository includes five oracle implementations:
 
 - `oracle.py`  
   Deterministic reference oracle using simulated pricing.  
@@ -362,7 +362,20 @@ This repository includes two oracle implementations:
   Live BTCUSD reference oracle that fetches real exchange prices
   from Coinbase, Kraken, and Bitstamp and aggregates using the median.
 
-The live reference oracle is provided for demonstration purposes only.
-It makes no guarantees regarding correctness, uptime, or suitability
-for settlement. Operators are expected to define and document their
-own methodologies.
+## Other Live BTCUSD Reference Oracles
+
+This repository also includes multiple live differentiatedBTCUSD oracle reference
+implementations, each demonstrating a distinct methodology:
+
+- `liveoracle_spot.py`  
+  Median of last traded prices across major USD spot venues.
+
+- `liveoracle_liquidity.py`  
+  Liquidity-oriented price signal incorporating high-volume venues.
+
+- `liveoracle_vwap.py`  
+  Time-windowed VWAP-based price suitable for settlement contexts.
+
+These implementations are provided for demonstration and reference
+purposes only. Operators are expected to define, document, and operate
+their own methodologies when running production oracles.
