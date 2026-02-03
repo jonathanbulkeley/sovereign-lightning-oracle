@@ -349,3 +349,20 @@ no one pretends there is a single “true feed”
 
 
 If that resonates, you are the intended operator.
+
+## Reference Implementations
+
+This repository includes two oracle implementations:
+
+- `oracle.py`  
+  Deterministic reference oracle using simulated pricing.  
+  Intended for demos, testing, and protocol validation.
+
+- `liveoracle.py`  
+  Live BTCUSD reference oracle that fetches real exchange prices
+  from Coinbase, Kraken, and Bitstamp and aggregates using the median.
+
+The live reference oracle is provided for demonstration purposes only.
+It makes no guarantees regarding correctness, uptime, or suitability
+for settlement. Operators are expected to define and document their
+own methodologies.
