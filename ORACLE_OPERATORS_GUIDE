@@ -1,381 +1,258 @@
-docS/ORACLE_OPERATORS_GUIDE
+# Oracle Operator's Guide
 
-📄 Oracle Operator Guide
-Sovereign Lightning Oracle (SLO) — v1
+How to run your own Sovereign Lightning Oracle and sell signed data for sats.
 
-Purpose of This Document
-This guide explains how to operate an SLO oracle in v1 of the protocol.
-It is written for:
-infrastructure engineers
+## Overview
 
+An SLO operator runs one or more oracle servers behind an Aperture L402 proxy, connected to a Lightning node. Clients pay Lightning invoices to receive signed price assertions. You earn sats for every query.
 
-Lightning node operators
+## What You Need
 
+1. **A Linux server** — Cloud VM (GCP, AWS, etc.) or your own hardware
+2. **A Lightning node** — LND (self-hosted or Voltage/hosted)
+3. **Aperture** — L402 reverse proxy (open source, by Lightning Labs)
+4. **Python 3** — For running the oracle servers
 
-quantitative engineers
+Estimated costs:
+- Cloud VM: ~$15/month (GCP e2-small)
+- Lightning node: ~$27/month (Voltage Standard) or free (self-hosted)
+- Channel liquidity: 3-4M sats (~$2,000 at current prices) for inbound capacity
 
+## Architecture
+```
+Internet → Aperture (:8080) → Oracle backend (:9100)
+                ↕
+          Your LND node
+```
 
-anyone already ingesting BTC price data
+Aperture handles all payment logic. Your oracle code is a simple HTTP server that fetches prices, signs them, and returns JSON. Zero payment logic in the oracle itself.
 
+## Step 1: Set Up Your Lightning Node
 
-This guide assumes technical competence and does not attempt to simplify concepts at the expense of correctness.
+### Option A: Voltage (hosted, easiest)
 
-What an SLO Oracle Is (and Is Not)
-An SLO Oracle is
-an HTTP service
+1. Create a mainnet node at https://app.voltage.cloud
+2. Download `tls.cert` and `admin.macaroon`
+3. Fund the node and open channels (see [DEPLOYMENT.md](DEPLOYMENT.md))
 
+### Option B: Self-hosted LND
 
-that produces signed factual assertions
+1. Install LND: https://github.com/lightningnetwork/lnd
+2. Sync to chain, create wallet
+3. Open channels to well-connected peers
 
+Either way, you need **inbound liquidity** to receive payments. Open a channel with `push_sat` to give the remote side funds that can flow back to you when clients pay.
 
-in a canonical format
+## Step 2: Install and Build
+```bash
+# System packages
+sudo apt install -y python3 python3-pip golang-go git
+
+# Python dependencies
+pip3 install fastapi uvicorn ecdsa requests --break-system-packages
 
-
-after verifying Lightning payment
-
-
-An SLO Oracle is not
-a price feed API
-
-
-a publisher of “the true price”
-
-
-a consensus participant
-
-
-a protocol authority
-
-
-a trusted third party
-
-
-Each oracle is independent. Clients choose which oracles to trust.
-
-Oracle Responsibilities (v1)
-As an oracle operator, you are responsible for:
-Observing data
-
-
-In v1: BTC/USD pricing
-
-
-Using your chosen methodology
-
-
-Committing to methodology
-
-
-Explicit sources (e.g. exchanges)
-
-
-Explicit aggregation rule (e.g. median)
-
-
-Explicit time semantics
-
-
-Signing canonical messages
-
-
-secp256k1 signatures
-
-
-Deterministic canonical formatting
-
-
-Enforcing payment-before-release
-
-
-No signed data without payment confirmation
-
-
-
-What v1 Does Not Require
-You are not required to:
-match other oracles’ prices
-
-
-provide uptime guarantees
-
-
-participate in governance
-
-
-register anywhere
-
-
-coordinate with other operators
-
-
-stake capital or tokens
-
-
-You may operate anonymously or publicly.
-
-Running the Reference Oracle (v1)
-Requirements
-Python 3.10+
-
-
-A Lightning node (or simulated backend)
-
-
-Network connectivity
-
-
-Start the oracle
-python oracle.py <port>
-
-Example:
-python oracle.py 8000
-
-On startup, the oracle will print:
-its public key (compressed hex)
-
-
-the listening address
-
-
-This public key is how clients identify you.
-
-Endpoints (v1)
-GET /quote
-Requests a quote for BTCUSD data.
-Returns:
-domain
-
-
-price (in sats)
-
-
-invoice ID
-
-
-Lightning invoice (or simulation)
-
-
-
-GET /paid/{invoice_id}
-Returns signed data only after payment is verified.
-If payment has not occurred:
-HTTP 402 is returned
-
-
-no data is released
-
-
-This invariant is mandatory.
-
-Canonical Message Format
-Oracles must sign messages exactly as defined in the protocol spec.
-Example:
-v1|BTCUSD|43250.67|USD|2|2026-02-02T16:00:00Z|890456|coinbase,kraken,bitstamp|median
-
-Any deviation in formatting will cause clients to reject the response.
-
-Key Management
-v1 default
-Keys are generated at oracle startup
-
-
-Keys are held in memory
-
-
-Operator options
-Persist keys to disk
-
-
-Use HSMs
-
-
-Rotate keys manually
-
-
-SLO does not prescribe key management beyond:
-the public key identifies the oracle
-
-Lightning Payments
-v1 expectations
-One invoice per request
-
-
-Payment must be verified before release
-
-
-Micropayments are acceptable and expected
-
-
-Node requirements
-Ability to generate invoices
-
-
-Ability to detect payment settlement
-
-
-Routing, channel management, and uptime are operator concerns, not protocol requirements.
-
-Pricing Your Oracle
-You may price:
-cheaply (high volume, low margin)
-
-
-expensively (low volume, high assurance)
-
-
-differently per domain (v2+)
-
-
-In v1:
-pricing is per request
-
-
-pricing is expressed in sats
-
-
-Clients decide whether to pay.
-
-Independence and Plurality
-You are not expected to agree with other oracles.
-In fact:
-disagreement is a feature, not a failure.
-Clients use aggregation to resolve differences.
-If your oracle always matches others exactly, clients should be skeptical.
-
-Failure Modes
-If your oracle:
-goes offline
-
-
-returns errors
-
-
-returns unexpected formats
-
-
-Clients may:
-exclude you
-
-
-retry later
-
-
-replace you
-
-
-There are no penalties enforced by SLO.
-
-Security Expectations
-Oracles should:
-protect private keys
-
-
-validate inbound requests
-
-
-avoid leaking internal state
-
-
-rate-limit if necessary
-
-
-SLO does not enforce security policies beyond signature verification.
-
-Compliance and Liability
-SLO:
-does not make claims about correctness
-
-
-does not guarantee outcomes
-
-
-does not enforce SLAs
-
-
-You are publishing signed assertions, not advice.
-
-How Clients Find You (v1)
-There is no global registry.
-Clients may find oracles via:
-documentation
-
-
-recommendations
-
-
-social trust
-
-
-prior relationships
-
-
-This is intentional.
-
-When to Stop Operating
-If you no longer wish to operate:
-stop the service
-
-
-clients will naturally exclude you
-
-
-No coordination required.
-
-v1 Summary
-An SLO oracle:
-sells signed facts
-
-
-enforces payment-before-release
-
-
-operates independently
-
-
-competes on methodology and reliability
-
-
-That’s all.
-
-Final Note to Operators
-SLO works only if:
-oracles are honest about methodology
-
-
-clients are explicit about trust
-
-
-no one pretends there is a single “true feed”
-
-
-If that resonates, you are the intended operator.
-
-## Reference Implementations
-
-This repository includes five oracle implementations:
-
-- `oracle.py`  
-  Deterministic reference oracle using simulated pricing.  
-  Intended for demos, testing, and protocol validation.
-
-- `liveoracle.py`  
-  Live BTCUSD reference oracle that fetches real exchange prices
-  from Coinbase, Kraken, and Bitstamp and aggregates using the median.
-
-## Other Live BTCUSD Reference Oracles
-
-This repository also includes multiple live differentiatedBTCUSD oracle reference
-implementations, each demonstrating a distinct methodology:
-
-- `liveoracle_spot.py`  
-  Median of last traded prices across major USD spot venues.
-
-- `liveoracle_liquidity.py`  
-  Liquidity-oriented price signal incorporating high-volume venues.
-
-- `liveoracle_vwap.py`  
-  Time-windowed VWAP-based price suitable for settlement contexts.
-
-These implementations are provided for demonstration and reference
-purposes only. Operators are expected to define, document, and operate
-their own methodologies when running production oracles.
+# Clone SLO
+git clone https://github.com/jonathanbulkeley/sovereign-lightning-oracle.git ~/slo
+
+# Build Aperture
+git clone https://github.com/lightninglabs/aperture.git ~/aperture
+cd ~/aperture
+go build -o aperture ./cmd/aperture
+```
+
+## Step 3: Configure Your Oracle
+
+### Signing Keys
+
+Each oracle generates a fresh secp256k1 key pair on startup. The public key is returned with every response so clients can verify signatures.
+
+For production, you should use a persistent key so clients can pin your identity across restarts. Modify the oracle code to load a key from disk:
+```python
+import os
+from ecdsa import SigningKey, SECP256k1
+
+KEY_PATH = "/home/your_user/slo/keys/oracle.pem"
+
+if os.path.exists(KEY_PATH):
+    with open(KEY_PATH, "rb") as f:
+        PRIVATE_KEY = SigningKey.from_pem(f.read())
+else:
+    PRIVATE_KEY = SigningKey.generate(curve=SECP256k1)
+    os.makedirs(os.path.dirname(KEY_PATH), exist_ok=True)
+    with open(KEY_PATH, "wb") as f:
+        f.write(PRIVATE_KEY.to_pem())
+
+PUBLIC_KEY = PRIVATE_KEY.get_verifying_key()
+```
+
+### Price Sources
+
+The default oracles fetch from public exchange APIs (Coinbase, Kraken, Bitstamp). You can add or replace sources by modifying the `fetch_*` functions. Consider:
+
+- **Redundancy** — Use at least 3 sources; the oracle takes the median
+- **Rate limits** — Public APIs may throttle you; monitor for failures
+- **Latency** — Slower sources add response time; set aggressive timeouts
+- **Geographic diversity** — Mix US and EU exchanges to reduce correlated failures
+
+### Pricing Your Data
+
+Set your prices in `aperture.yaml`:
+```yaml
+services:
+  - name: "slo-spot"
+    pathregexp: "^/oracle/btcusd$"
+    address: "127.0.0.1:9100"
+    protocol: "http"
+    price: 10          # sats per query
+
+  - name: "slo-vwap"
+    pathregexp: "^/oracle/btcusd/vwap$"
+    address: "127.0.0.1:9101"
+    protocol: "http"
+    price: 20          # sats per query
+```
+
+Pricing considerations:
+- Too cheap and you don't cover costs
+- Too expensive and clients choose other oracles
+- More computation or better data justifies higher prices (VWAP > spot)
+- The market will tell you — if query volume drops, your price is too high
+
+## Step 4: Configure Aperture
+
+Create your `aperture.yaml`:
+```yaml
+insecure: true
+listenaddr: "0.0.0.0:8080"
+debuglevel: "debug"
+dbbackend: "sqlite"
+
+authenticator:
+  network: "mainnet"
+  lndhost: "YOUR_LND_HOST:10009"
+  tlspath: "/path/to/tls.cert"
+  macdir: "/path/to/macaroon/directory"
+
+services:
+  - name: "slo-spot"
+    hostregexp: ".*"
+    pathregexp: "^/oracle/btcusd$"
+    address: "127.0.0.1:9100"
+    protocol: "http"
+    price: 10
+
+  - name: "slo-vwap"
+    hostregexp: ".*"
+    pathregexp: "^/oracle/btcusd/vwap$"
+    address: "127.0.0.1:9101"
+    protocol: "http"
+    price: 20
+```
+
+**Important:** Aperture looks for `invoice.macaroon` in the `macdir` directory. If you only have `admin.macaroon`, copy it:
+```bash
+cp admin.macaroon invoice.macaroon
+```
+
+## Step 5: Launch
+```bash
+# Start oracles
+python3 ~/slo/oracle/liveoracle_btcusd_spot.py &
+python3 ~/slo/oracle/liveoracle_btcusd_vwap.py &
+
+# Start Aperture
+~/aperture/aperture --configfile=~/slo/config/aperture.yaml &
+```
+
+### Verify
+```bash
+curl -v http://localhost:8080/oracle/btcusd
+# Should return 402 with a Lightning invoice
+```
+
+## Step 6: Keep It Running
+
+Use systemd to survive reboots and SSH disconnects:
+```bash
+sudo tee /etc/systemd/system/slo-spot.service << 'EOF'
+[Unit]
+Description=SLO Spot Oracle
+After=network.target
+
+[Service]
+User=YOUR_USER
+ExecStart=/usr/bin/python3 /home/YOUR_USER/slo/oracle/liveoracle_btcusd_spot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable slo-spot
+sudo systemctl start slo-spot
+```
+
+Repeat for `slo-vwap` and `aperture`.
+
+## Monitoring
+
+### Check oracle health
+```bash
+curl http://localhost:9100/health
+curl http://localhost:9101/health
+```
+
+### Check channel balance
+```bash
+curl -k --header "Grpc-Metadata-macaroon: YOUR_HEX_MACAROON" \
+  https://YOURNODE.m.voltageapp.io:8080/v1/balance/channels
+```
+
+### Check earnings
+```bash
+curl -k --header "Grpc-Metadata-macaroon: YOUR_HEX_MACAROON" \
+  https://YOURNODE.m.voltageapp.io:8080/v1/invoices?reversed=true&num_max_invoices=10
+```
+
+### Watch for problems
+
+- **Oracle returning errors** — Exchange APIs may be down; check logs
+- **Aperture not starting** — Usually a macaroon or TLS cert path issue
+- **No payments arriving** — Check inbound liquidity; channel may be depleted
+- **Channel force-closed** — Peer went offline; need to open a new channel
+
+## Adding New Data Types
+
+To create a new oracle (e.g., ETHUSD), copy the spot oracle and modify:
+
+1. Change the exchange API calls to fetch ETH prices
+2. Update the canonical format: `v1|ETHUSD|...|ethereum sources|median`
+3. Run on a new port (e.g., 9102)
+4. Add a new service block in `aperture.yaml`
+
+The protocol is data-agnostic. Any verifiable assertion can be sold this way — prices, rates, weather, election results, sports scores. If a client will pay for it and you can sign it, it's an oracle.
+
+## Economics
+
+A rough model for a BTCUSD spot oracle:
+
+| Item | Monthly Cost |
+|---|---|
+| GCP e2-small VM | $15 |
+| Voltage Standard node | $27 |
+| **Total operating cost** | **$42** |
+
+At 10 sats per query (~$0.007):
+- **Break even:** ~6,000 queries/month (~200/day)
+- **At 1,000 queries/day:** ~$210/month revenue, ~$168 profit
+
+The real value comes from serving multiple data types on the same infrastructure. Each new oracle endpoint is incremental revenue on the same fixed costs.
+```
+
+---
+
+That's the operator guide. Add it to `docs/OPERATOR_GUIDE.md` in your repo. Also check that channel:
+```
+curl -k --header "Grpc-Metadata-macaroon: %MAC%" https://mycelia.m.voltageapp.io:8080/v1/channels/pending
