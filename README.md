@@ -1,129 +1,162 @@
 # Sovereign Lightning Oracle (SLO)
 
-SLO is a minimal protocol that allows agents and contracts to purchase signed, verifiable BTCUSD price assertions using Lightning payments, with a design that generalizes to other metrics with variable truth, without trusting any single oracle.
+**Pay 10 sats. Get a signed BTCUSD price.**
 
-The protocol is intentionally narrow in scope and favors explicit trust boundaries over discovery, governance, or reputation systems.
+SLO is a protocol for purchasing signed, verifiable price assertions over Lightning micropayments. No API keys. No accounts. No trust. Just payment and proof.
 
-[![License: MIT (planned)](https://img.shields.io/badge/License-MIT%20(planned)-yellow.svg)](LICENSE)  
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+## Try It Now
 
-What this is
+### Live (mainnet — any Lightning wallet)
+```
+curl -v http://104.197.109.246:8080/oracle/btcusd
+```
 
-* A paid oracle protocol using Lightning
-* Client-selected oracle sets
-* Deterministic aggregation (median)
-* Canonical, signed factual assertions
-* Reference oracle and reference client implementations
+You'll get a `402 Payment Required` with a Lightning invoice for 10 sats. Pay it, get a cryptographically signed BTCUSD spot price sourced from Coinbase, Kraken, and Bitstamp.
 
-SLO is designed to be boring, explicit, and composable.
+> ⚡ **Status: Beta** — Live on Bitcoin mainnet. The endpoint may go down for maintenance.
 
-What this is not
+### Local demo (no Lightning node needed)
 
-* A price feed API
-* A global oracle registry
-* A governance system
-* A token network
-* A consensus protocol
-* A source of “the true price”
+Clone this repo and run the [Polar Setup Guide](docs/POLAR_SETUP.md) to simulate the full L402 flow on your machine in ~30 minutes. No real bitcoin required.
 
-SLO does not attempt to decide which oracle is correct. That responsibility belongs entirely to the client.
+## How It Works
+```
+Client                       Aperture (L402 proxy)           Oracle (FastAPI)
+  │                                │                              │
+  │  GET /oracle/btcusd            │                              │
+  │ ─────────────────────────────► │                              │
+  │                                │                              │
+  │  402 + Lightning invoice       │                              │
+  │ ◄───────────────────────────── │                              │
+  │                                │                              │
+  │  ⚡ Pay invoice (10 sats)      │                              │
+  │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─► │                              │
+  │                                │                              │
+  │  Retry with L402 token         │                              │
+  │ ─────────────────────────────► │  GET /oracle/btcusd          │
+  │                                │ ───────────────────────────► │
+  │                                │                              │
+  │                                │  Signed price assertion      │
+  │                                │ ◄─────────────────────────── │
+  │  { canonical, signature,       │                              │
+  │    pubkey }                    │                              │
+  │ ◄───────────────────────────── │                              │
+```
 
-v1 Scope (Frozen)
-v1 is intentionally limited and frozen.
+1. Client requests price data
+2. [Aperture](https://github.com/lightninglabs/aperture) returns HTTP 402 with a Lightning invoice
+3. Client pays the invoice (any Lightning wallet or L402 client like [lnget](https://github.com/lightninglabs/lnget))
+4. Client retries with proof of payment (L402 token)
+5. Aperture verifies payment and proxies to the oracle backend
+6. Oracle returns a signed BTCUSD price assertion
 
-* Domain: BTCUSD only
-* Payments: Lightning only
-* Aggregation: median
-* Oracles: independently operated, stateless HTTP services
-* Clients: explicitly configured oracle lists
-* No discovery
-* No reputation
-* No persistence requirements
+## Response Format
+```json
+{
+  "domain": "BTCUSD",
+  "canonical": "v1|BTCUSD|66249.33|USD|2|2026-02-13T07:36:30Z|890123|coinbase,kraken,bitstamp|median",
+  "signature": "YpUmtkKAFrpTPD9tJaXueYc8IdMM7+M2R7365yu/hsxn...",
+  "pubkey": "0220a2222aae4390e6921f77a8785cbfedd500de477eda58..."
+}
+```
 
-If something is not listed here, it is out of scope for v1.
+The `canonical` field is the signed message. The `signature` is a secp256k1 ECDSA signature over `SHA256(canonical)`. Any client can verify the signature using the `pubkey`.
 
-Core Invariants
-SLO enforces the following invariants:
+## Endpoints
 
-1. Payment before release\
-   No signed data is returned unless Lightning payment is verified.
+| Path | Method | Price | Description |
+|---|---|---|---|
+| `/oracle/btcusd` | Spot median | 10 sats | Median of last trades from Coinbase, Kraken, Bitstamp |
+| `/oracle/btcusd/vwap` | VWAP | 20 sats | Volume-weighted average from Coinbase, Kraken |
+| `/health` | — | Free | Health check (not gated) |
 
-2. Explicit trust\
-   Clients choose which oracles to query. There is no registry.
+## Repository Structure
+```
+slo/
+├── oracle/
+│   ├── liveoracle_btcusd_spot.py       # Spot price oracle (L402-ready)
+│   └── liveoracle_btcusd_vwap.py       # VWAP oracle (L402-ready)
+├── client/
+│   └── quorum_client_l402.py           # L402-aware quorum client
+├── config/
+│   └── aperture.yaml                   # Aperture config template
+├── docs/
+│   ├── POLAR_SETUP.md                  # Local demo guide (Polar + regtest)
+│   ├── DEPLOYMENT.md                   # Production deployment guide (GCP + Voltage)
+│   ├── Protocol.md                     # Canonical protocol specification
+│   └── Quorum_Specification.md         # Client quorum and aggregation rules
+├── legacy/
+│   ├── liveoracle_btcusd_spot.py       # Original with simulated payments
+│   ├── liveoracle_btcusd_liquidity.py  # Original liquidity oracle
+│   ├── liveoracle_btcusd_vwap.py       # Original VWAP oracle
+│   └── quorum_client.py               # Original client
+└── README.md
+```
 
-3. Deterministic verification\
-   All oracle responses are signed and verifiable.
+## Protocol (v1)
 
-4. Deterministic aggregation\
-   Clients aggregate results using a fixed rule (median in v1).
+### Canonical Message
+```
+v1|BTCUSD|<price>|USD|<decimals>|<timestamp>|<nonce>|<sources>|<method>
+```
 
-Repository Contents
+### Core Invariants
 
-* quorum_client.py\
-  Quorum-aware client reference
+1. **Payment before release** — No signed data without Lightning payment (enforced by Aperture)
+2. **Explicit trust** — Clients choose which oracles to query (no registry, no governance)
+3. **Deterministic verification** — Every response is signed (secp256k1) and verifiable
+4. **Deterministic aggregation** — Clients aggregate via median across multiple oracles
 
-* liveoracle_btcusd_spot.py\
-  Live BTCUSD oracle (spot median from real sources)
+### What SLO Is Not
 
-* liveoracle_btcusd_liquidity.py\
-  Live BTCUSD oracle (liquidity-weighted)
+- Not a price feed (you pay per query, not per subscription)
+- Not a global oracle registry
+- Not a governance system
+- Not a consensus protocol
 
-* liveoracle_btcusd_vwap.py\
-  Live BTCUSD oracle (time-windowed VWAP)
+SLO does not decide which oracle is correct. That responsibility belongs to the client.
 
-* Protocol.md\
-  Canonical protocol specification
+## Architecture
 
-* Quorum Specification.md\
-  Detailed client quorum and aggregation rules
+SLO uses [Lightning Labs' L402 protocol](https://github.com/lightninglabs/L402) to gate API access behind Lightning micropayments:
 
-* CLIENT_INTEGRATION.md\
-  How clients integrate SLO
+- **[Aperture](https://github.com/lightninglabs/aperture)** — Reverse proxy that creates invoices and verifies payments
+- **[lnget](https://github.com/lightninglabs/lnget)** — CLI client that handles L402 payments transparently
+- **Oracle servers** — Stateless FastAPI services that fetch prices, sign assertions, and return JSON
 
-* DEMO.md\
-  Step-by-step demo instructions
+The oracle servers contain zero payment logic. Aperture enforces the "payment before data" invariant at the proxy layer.
 
-* ORACLE_OPERATORS_GUIDE/\
-  Directory with guide(s) for running/operating an oracle
+## For AI Agents
 
-* VERSION.txt\
-  Version and freeze status
+SLO is designed to be consumed by machines. The L402 protocol lets AI agents pay for data programmatically — no API keys, no OAuth, no accounts. An agent with a Lightning wallet can:
+```bash
+lnget -k http://104.197.109.246:8080/oracle/btcusd
+```
 
-* LICENSE\
-  License file (MIT planned)
+10 sats spent, signed price received, cryptographically verified. This is what machine-payable data looks like.
 
-Demo
-A local demo runs three independent oracles and a client that:
+## Design Philosophy
 
-* pays each oracle via simulated Lightning
-* verifies signatures
-* aggregates prices deterministically
-
-See DEMO.md for exact commands.
-
-Design Philosophy
 SLO favors:
+- explicit failure over hidden retries
+- local configuration over global coordination
+- payment over access control
+- plural oracles over singular truth
 
-* explicit failure over hidden retries
-* local configuration over global coordination
-* payment over access control
-* plural oracles over singular truth
+## Quick Start (Legacy — Simulated Payments)
 
-Disagreement between oracles is expected and handled by clients.
+No Lightning node required:
+```bash
+pip install fastapi uvicorn ecdsa requests
 
-Status
+# Terminal 1-2: Start oracles
+python legacy/liveoracle_btcusd_spot.py 8000
+python legacy/liveoracle_btcusd_vwap.py 8002
 
-* Version: v1
-* Status: Frozen
-* Purpose: Protocol validation and external operator testing
+# Terminal 3: Run quorum client
+python legacy/quorum_client.py
+```
 
-No new features will be added to v1.
+## License
 
-External Operators
-The project is actively looking for one external oracle operator to run the reference oracle and expose an endpoint, in order to validate independence and protocol clarity.
-No commitments or incentives are implied.
-
-License
-MIT License — see [`LICENSE`](LICENSE) for full text (forthcoming).
-
-The protocol specification and reference implementations are intended for public use, improvement, and independent operation. Once external validation is underway, the full MIT license will be applied to enable broader adoption.license will be applied to enable broader adoption.
+MIT — see [LICENSE](LICENSE)
