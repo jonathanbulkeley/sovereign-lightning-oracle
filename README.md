@@ -1,10 +1,11 @@
+Readme final · MDCopy
+
 Sovereign Lightning Oracle (SLO)
 
 Pay sats. Get signed data. Trust math, not middlemen.
 
 SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. No API keys. No accounts. No trust. Just payment and proof.
 BTCUSD is the first implementation. Future versions will support additional asset pairs, interest rates, commodities, and any metric where truth is contested and verification matters.
-
 Why SLO?
 Oracles today are broken. Most price feeds are free — which means you're not the customer, you're the product. Free oracles create hidden dependencies: opaque update schedules, silent failures, governance capture, and single points of trust that defeat the purpose of building on Bitcoin.
 SLO takes a different approach:
@@ -13,12 +14,10 @@ Payment replaces trust. Every query costs sats. Every response is signed. If the
 No accounts, no API keys. A Lightning payment is your authentication. Any machine with a wallet can buy data — humans, bots, smart contracts, AI agents.
 Multiple oracles, client aggregation. You choose which oracles to query. You aggregate the results. No single oracle can lie to you without detection.
 Cryptographic proof at every layer. Signed assertions (secp256k1) mean you can verify data independently, store it, forward it, or submit it on-chain — all without trusting the transport.
-
 Censorship resistant. No platform can revoke your access. If you can reach the endpoint and pay the invoice, you get the data. No terms of service, no rate limits, no deplatforming.
 Aligned incentives. Oracle operators earn sats per query. More accurate data attracts more paying clients. Bad data means lost revenue. The economic feedback loop enforces quality without governance.
 
 Try It Now
-
 Live (mainnet — any Lightning wallet)
 curl -v http://104.197.109.246:8080/oracle/btcusd
 You'll get a 402 Payment Required with a Lightning invoice. Pay it with any Lightning wallet, get a cryptographically signed BTCUSD price sourced from Coinbase, Kraken, and Bitstamp.
@@ -180,6 +179,5 @@ python legacy/liveoracle_btcusd_vwap.py 8002
 
 # Terminal 3: Run quorum client
 python legacy/quorum_client.py
-
 License
 MIT — see LICENSE
