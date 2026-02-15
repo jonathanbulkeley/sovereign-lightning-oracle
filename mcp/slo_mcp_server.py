@@ -6,11 +6,12 @@ from fastmcp import FastMCP
 
 mcp = FastMCP(
     name="Sovereign Lightning Oracle",
-    instructions="You have access to a live Bitcoin price oracle on the Lightning Network. Each query costs real sats (10 for spot, 20 for VWAP) paid automatically via Lightning. Responses are cryptographically signed and independently verifiable."
+    instructions="You have access to a live Bitcoin and Ethereum price oracle on the Lightning Network. Each query costs real sats (10 for spot, 20 for VWAP) paid automatically via Lightning. Responses are cryptographically signed and independently verifiable."
 )
 
 SLO_SPOT_URL = "http://104.197.109.246:8080/oracle/btcusd"
 SLO_VWAP_URL = "http://104.197.109.246:8080/oracle/btcusd/vwap"
+SLO_ETHUSD_URL = "http://104.197.109.246:8080/oracle/ethusd"
 
 
 def _fetch_oracle(url):
@@ -76,6 +77,26 @@ def get_btcusd_vwap() -> dict:
     Costs 20 sats paid via Lightning. More accurate than spot for
     large orders or volatile markets."""
     data = _fetch_oracle(SLO_VWAP_URL)
+    parsed = _parse_canonical(data["canonical"])
+    sig_valid = _verify_signature(data["canonical"], data["signature"], data["pubkey"])
+    return {
+        "price": parsed["price"],
+        "currency": parsed["currency"],
+        "timestamp": parsed["timestamp"],
+        "sources": parsed["sources"],
+        "method": parsed["method"],
+        "signature_valid": sig_valid,
+        "canonical": data["canonical"],
+        "pubkey": data["pubkey"],
+    }
+
+
+@mcp.tool()
+def get_ethusd_spot() -> dict:
+    """Get the current ETHUSD spot price from the Sovereign Lightning Oracle.
+    Costs 10 sats paid via Lightning. Returns median price from
+    Coinbase, Kraken, Bitstamp, Gemini, and Bitfinex with a cryptographic signature."""
+    data = _fetch_oracle(SLO_ETHUSD_URL)
     parsed = _parse_canonical(data["canonical"])
     sig_valid = _verify_signature(data["canonical"], data["signature"], data["pubkey"])
     return {
