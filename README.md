@@ -1,17 +1,25 @@
 Sovereign Lightning Oracle (SLO)
+
 Pay sats. Get signed data. Trust math, not middlemen.
+
 SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. No API keys. No accounts. No trust. Just payment and proof.
+
 BTCUSD, ETHUSD, and EURUSD are live on Bitcoin mainnet — alongside the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
+
 Try It Now
 Live (mainnet — any Lightning wallet)
 curl -v http://104.197.109.246:8080/oracle/btcusd
 curl -v http://104.197.109.246:8080/oracle/ethusd
 curl -v http://104.197.109.246:8080/oracle/eurusd
 You'll get a 402 Payment Required with a Lightning invoice. Pay it with any Lightning wallet, get a cryptographically signed price sourced from major exchanges and central banks.
+
 L402-gated endpoints (pay per query)
+
 EndpointAssetMethodPriceSources/oracle/btcusdBTC/USDSpot median10 sats9 sources: Coinbase, Kraken, Bitstamp, Gemini, Bitfinex, Binance, Binance US, OKX, Gate.io/oracle/btcusd/vwapBTC/USDVolume-weighted average20 satsCoinbase, Kraken/oracle/ethusdETH/USDSpot median10 satsCoinbase, Kraken, Bitstamp, Gemini, Bitfinex/oracle/eurusdEUR/USDSpot median10 satsECB, Bank of Canada, RBA, Norges Bank, Czech National Bank, Kraken, Bitstamp/dlc/oracle/attestations/{id}BTC/USDSchnorr attestation1000 sats9 sources (same as BTCUSD spot)
 The VWAP oracle costs more because it processes full trade history rather than a single last-trade price — more computation, more data, more signal. The DLC attestation costs 1000 sats because it settles real financial contracts.
+
 Free DLC endpoints (no payment required)
+
 EndpointDescriptionhttp://104.197.109.246:9104/dlc/oracle/pubkeyOracle's persistent Schnorr public keyhttp://104.197.109.246:9104/dlc/oracle/announcementsList upcoming events with nonce commitmentshttp://104.197.109.246:9104/dlc/oracle/announcements/{id}Single announcement with R-pointshttp://104.197.109.246:9104/dlc/oracle/statusOracle status and statistics
 Announcements are free to encourage adoption — the more contracts built against SLO, the more attestation revenue.
 
