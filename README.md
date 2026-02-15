@@ -237,5 +237,6 @@ python legacy/liveoracle_btcusd_vwap.py 8002
 
 # Terminal 3: Run quorum client
 python legacy/quorum_client.py
+
 License
 MIT — see LICENSE
