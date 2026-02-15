@@ -1,70 +1,40 @@
-# =============================================================================
-# Aperture Configuration for SLO Oracle (Full Stack)
-# =============================================================================
-#
-# Gates all three SLO oracle types via L402:
-#   /oracle/btcusd           — spot (10 sats)
-#   /oracle/btcusd/liquidity — liquidity-weighted (15 sats)
-#   /oracle/btcusd/vwap      — VWAP (20 sats)
-#   /health                  — ungated passthrough
-#
-# Docs: https://github.com/lightninglabs/aperture
-#
-# SETUP:
-#   1. go install github.com/lightninglabs/aperture/cmd/aperture@latest
-#   2. Have LND running (or use Voltage/Umbrel with litd)
-#   3. aperture --configfile aperture.yaml
-#
-# =============================================================================
-
+insecure: true
 listenaddr: "0.0.0.0:8080"
 debuglevel: "debug"
-
-authenticator:
-  lnd:
-    # Option A: Direct LND connection
-    host: "localhost:10009"
-    macaroonpath: "/path/to/admin.macaroon"
-    tlscertpath: "/path/to/tls.cert"
-
-    # Option B: Lightning Node Connect (Umbrel, Voltage, etc.)
-    # lnc:
-    #   mailboxaddr: "mailbox.terminal.lightning.today:443"
-    #   pairingphrase: "your-pairing-phrase-here"
-
 dbbackend: "sqlite"
-sqlite:
-  dbfile: "/tmp/aperture/aperture.db"
-
+authenticator:
+  network: "mainnet"
+  lndhost: "mycelia.m.voltageapp.io:10009"
+  tlspath: "/home/jonathan_bulkeley/slo/creds/tls.cert"
+  macdir: "/home/jonathan_bulkeley/slo/creds"
 services:
-
-  # -- Spot oracle: 10 sats --
-  - name: "slo-oracle-spot"
+  - name: "slo-spot"
     hostregexp: ".*"
     pathregexp: "^/oracle/btcusd$"
     address: "127.0.0.1:9100"
     protocol: "http"
     price: 10
-
-  # -- Liquidity-weighted oracle: 15 sats --
-  - name: "slo-oracle-liquidity"
-    hostregexp: ".*"
-    pathregexp: "^/oracle/btcusd/liquidity$"
-    address: "127.0.0.1:9101"
-    protocol: "http"
-    price: 15
-
-  # -- VWAP oracle: 20 sats --
-  - name: "slo-oracle-vwap"
+  - name: "slo-vwap"
     hostregexp: ".*"
     pathregexp: "^/oracle/btcusd/vwap$"
-    address: "127.0.0.1:9102"
+    address: "127.0.0.1:9101"
     protocol: "http"
     price: 20
-
-  # -- Health checks (ungated) --
-  - name: "slo-health"
+  - name: "slo-ethusd"
     hostregexp: ".*"
-    pathregexp: "^/health$"
-    address: "127.0.0.1:9100"
+    pathregexp: "^/oracle/ethusd$"
+    address: "127.0.0.1:9102"
     protocol: "http"
+    price: 10
+  - name: "slo-eurusd"
+    hostregexp: ".*"
+    pathregexp: "^/oracle/eurusd$"
+    address: "127.0.0.1:9103"
+    protocol: "http"
+    price: 10
+  - name: "slo-dlc-attestation"
+    hostregexp: ".*"
+    pathregexp: "^/dlc/oracle/attestations/.*$"
+    address: "127.0.0.1:9104"
+    protocol: "http"
+    price: 1000
