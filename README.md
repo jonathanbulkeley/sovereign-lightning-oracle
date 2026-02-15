@@ -3,7 +3,7 @@ Sovereign Lightning Oracle (SLO)
 Pay sats. Get signed data. Trust math, not middlemen.
 
 SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. No API keys. No accounts. No trust. Just payment and proof.
-BTCUSD, ETHUSD, and EURUSD are live. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges — proving the SLO pattern works beyond crypto. Future versions will support additional asset pairs, commodities, and any metric where truth is contested and verification matters.
+BTCUSD, ETHUSD, and EURUSD are live on Bitcoin mainnet. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges — proving the SLO pattern works beyond crypto. Future versions will support additional asset pairs, commodities, and any metric where truth is contested and verification matters.
 
 Why SLO?
 Oracles today are broken. Most price feeds are free — which means you're not the customer, you're the product. Free oracles create hidden dependencies: opaque update schedules, silent failures, governance capture, and single points of trust that defeat the purpose of building on Bitcoin.
