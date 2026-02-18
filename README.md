@@ -277,6 +277,7 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 | `get_btcusd_vwap` | 20 sats | Volume-weighted average from Coinbase, Kraken |
 | `get_ethusd_spot` | 10 sats | Median ETH spot price from 5 exchanges |
 | `get_eurusd_spot` | 10 sats | Median EUR/USD from 5 central banks + 2 exchanges |
+| `get_xauusd_spot` | 10 sats | Median gold price from 3 traditional + 5 PAXG exchanges |
 
 ## Roadmap
 
