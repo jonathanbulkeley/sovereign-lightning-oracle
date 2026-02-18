@@ -4,7 +4,7 @@ Pay sats. Get signed data. Trust math, not middlemen.
 
 SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. No API keys. No accounts. No trust. Just payment and proof.
 
-BTCUSD, ETHUSD, EURUSD, and XAU/USD (gold) are live on Bitcoin mainnet — alongside the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
+BTCUSD, ETHUSD, EURUSD, XAU/USD (gold), and BTC/EUR are live on Bitcoin mainnet — alongside the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
 
 ## Try It Now
 
@@ -25,6 +25,7 @@ You'll get a 402 Payment Required with a Lightning invoice. Pay it with any Ligh
 | `/oracle/btcusd/vwap` | BTC/USD | Volume-weighted average | 20 sats | Coinbase, Kraken |
 | `/oracle/ethusd` | ETH/USD | Spot median | 10 sats | Coinbase, Kraken, Bitstamp, Gemini, Bitfinex |
 | `/oracle/eurusd` | EUR/USD | Spot median | 10 sats | ECB, Bank of Canada, RBA, Norges Bank, Czech National Bank, Kraken, Bitstamp |
+| `/oracle/btceur` | BTC/EUR | Cross-rate | 10 sats | Derived from BTCUSD (9 sources) / EURUSD (7 sources) |
 | `/oracle/xauusd` | XAU/USD | Spot median | 10 sats | 8 sources: Kitco, JM Bullion, GoldBroker, Coinbase, Kraken, Gemini, Binance, OKX |
 | `/dlc/oracle/attestations/{id}` | BTC/USD | Schnorr attestation | 1000 sats | 9 sources (same as BTCUSD spot) |
 
@@ -168,11 +169,13 @@ slo/
 │   │   ├── eurusd.py                  # 7-source EUR/USD feed (5 central banks)
 │   │   └── btcusd_vwap.py             # VWAP feed (Coinbase, Kraken trades)
 │   │   ├── xauusd.py                   # 8-source XAU/USD feed (traditional + PAXG)
+│   │   ├── btceur.py                   # BTC/EUR cross-rate derivation
 │   ├── liveoracle_btcusd_spot.py      # BTC spot oracle (10 sats, 9 sources)
 │   ├── liveoracle_btcusd_vwap.py      # BTC VWAP oracle (20 sats, 2 sources)
 │   ├── liveoracle_ethusd_spot.py      # ETH spot oracle (10 sats, 5 sources)
 │   └── liveoracle_eurusd_spot.py      # EUR/USD oracle (10 sats, 7 sources)
 │   ├── liveoracle_xauusd_spot.py      # Gold spot oracle (10 sats, 8 sources)
+│   ├── liveoracle_btceur_spot.py      # BTC/EUR cross-rate oracle (10 sats, 16 sources)
 ├── dlc/
 │   ├── __init__.py
 │   ├── attestor.py                    # Schnorr nonce commitment & attestation
@@ -278,6 +281,7 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 | `get_ethusd_spot` | 10 sats | Median ETH spot price from 5 exchanges |
 | `get_eurusd_spot` | 10 sats | Median EUR/USD from 5 central banks + 2 exchanges |
 | `get_xauusd_spot` | 10 sats | Median gold price from 3 traditional + 5 PAXG exchanges |
+| `get_btceur_spot` | 10 sats | BTC/EUR cross-rate derived from BTCUSD + EURUSD |
 
 ## Roadmap
 
@@ -291,6 +295,7 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 - [x] DLC oracle with Schnorr attestations (hourly, 5-digit decomposition, 1000 sats)
 - [x] 9-source BTCUSD feed with USDT normalization
 - [x] XAU/USD gold oracle (8 sources: Kitco, JM Bullion, GoldBroker + 5 PAXG exchanges)
+- [x] BTC/EUR cross-rate oracle (derived from BTCUSD + EURUSD, 16 sources)
 - [ ] Commodity oracles (oil)
 - [ ] Interest rate oracles (Fed funds, SOFR)
 - [ ] Multi-operator federation
