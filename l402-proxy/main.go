@@ -132,6 +132,7 @@ func proxyTo(backendURL string, w http.ResponseWriter, r *http.Request) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	authStr := "-"; if r.Header.Get("Authorization") != "" { authStr = "auth" }; log.Printf("%s %s %s %s", r.RemoteAddr, r.Method, r.URL.Path, authStr)
 	path := r.URL.Path
 
 	if backend, ok := freeRoutes[path]; ok {
