@@ -95,7 +95,7 @@ The `canonical` field is the **only** field that matters for verification. All o
 
 ## Payment Protocol (L402)
 
-SLO uses the [L402 protocol](https://github.com/lightninglabs/L402) for payment gating, enforced by [Aperture](https://github.com/lightninglabs/aperture).
+SLO uses the [L402 protocol](https://github.com/lightninglabs/L402) for payment gating, enforced by a custom Go reverse proxy that creates invoices via the LND REST API and mints/verifies L402 macaroons.
 
 ### Flow
 ```
@@ -125,8 +125,8 @@ Authorization: L402 <macaroon>:<preimage_hex>
 
 ### Payment Separation
 
-The oracle servers contain **zero payment logic**. Aperture sits in front as a reverse proxy and handles:
-- Invoice creation (via the connected LND node)
+The oracle servers contain **zero payment logic**. The L402 proxy sits in front as a reverse proxy and handles:
+- Invoice creation (via the connected LND node's REST API)
 - Payment verification
 - Macaroon issuance and validation
 
@@ -140,9 +140,19 @@ Oracles expose HTTP GET endpoints. The URL path determines the data type:
 
 | Path | Data |
 |---|---|
-| `/oracle/btcusd` | BTCUSD spot price |
+| `/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
 | `/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
+| `/oracle/ethusd` | ETHUSD spot price (median, 5 sources) |
+| `/oracle/eurusd` | EURUSD spot price (median, 7 sources) |
+| `/oracle/xauusd` | XAU/USD gold spot price (median, 8 sources) |
+| `/oracle/btceur` | BTC/EUR cross-rate (derived from BTCUSD + EURUSD) |
+| `/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
+| `/dlc/oracle/attestations/{id}` | DLC Schnorr attestation (1000 sats) |
 | `/health` | Health check (not payment-gated) |
+| `/oracle/status` | Oracle status (not payment-gated) |
+| `/dlc/oracle/pubkey` | DLC oracle public key (not payment-gated) |
+| `/dlc/oracle/announcements` | DLC nonce commitments (not payment-gated) |
+| `/dlc/oracle/status` | DLC oracle status (not payment-gated) |
 
 ### Content Type
 

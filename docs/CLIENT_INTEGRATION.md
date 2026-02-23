@@ -291,9 +291,10 @@ The quorum pattern means no single oracle can deceive you. As more operators com
 
 ## Cost Management
 
-- Spot query: **10 sats** (~$0.007)
+- Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL): **10 sats** (~$0.007)
 - VWAP query: **20 sats** (~$0.014)
-- Full quorum (both): **30 sats** (~$0.021)
+- DLC attestation: **1000 sats** (~$0.70)
+- Full quorum (spot + VWAP): **30 sats** (~$0.021)
 
 At 1 query per minute, 24/7:
 - Spot only: ~432,000 sats/month (~$290)
