@@ -1,3 +1,5 @@
 dlc/keys/
 dlc/data/
 sho/keys/
+oracle/keys/*.key
+__pycache__/

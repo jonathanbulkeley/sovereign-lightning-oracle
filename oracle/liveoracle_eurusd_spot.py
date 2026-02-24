@@ -24,9 +24,9 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import uvicorn
 from ecdsa import SigningKey, SECP256k1
+import sys; sys.path.insert(0, "/home/jonathan_bulkeley/slo"); from oracle.keys import PRIVATE_KEY, PUBLIC_KEY
 
-PRIVATE_KEY = SigningKey.generate(curve=SECP256k1)
-PUBLIC_KEY = PRIVATE_KEY.get_verifying_key()
+# Key loaded from oracle/keys/ (persistent, shared across all backends)
 
 app = FastAPI(
     title="SLO EURUSD Spot Oracle",

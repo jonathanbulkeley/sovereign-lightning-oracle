@@ -1,14 +1,14 @@
 # liveoracle_solusd_spot.py
 """
 Live SOLUSD Spot Oracle (Median of 9 sources with USDT normalization)
-SLO v1 — L402-gated via Aperture
+SLO v1 — L402-gated via L402 proxy
 
 9 sources:
   Tier 1 (USD): Coinbase, Kraken, Bitstamp, Gemini, Bitfinex
   Tier 2 (USDT normalized): Binance, OKX, Gate.io, Bybit
 
 Port: 9107
-Aperture path: /oracle/solusd
+Path: /oracle/solusd
 """
 import hashlib, base64, sys
 from datetime import datetime, timezone
@@ -17,13 +17,13 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import uvicorn
 from ecdsa import SigningKey, SECP256k1
+import sys; sys.path.insert(0, "/home/jonathan_bulkeley/slo"); from oracle.keys import PRIVATE_KEY, PUBLIC_KEY
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from oracle.feeds.solusd import get_solusd_price
 
 app = FastAPI()
-PRIVATE_KEY = SigningKey.generate(curve=SECP256k1)
-PUBLIC_KEY = PRIVATE_KEY.get_verifying_key()
+# Key loaded from oracle/keys/ (persistent, shared across all backends)
 
 @app.get("/oracle/solusd")
 def oracle_solusd():
@@ -50,6 +50,6 @@ if __name__ == "__main__":
     print(f"SLO SOLUSD Oracle (L402-backed) starting on :{port}")
     print(f"  Public key: {PUBLIC_KEY.to_string('compressed').hex()}")
     print(f"  Sources: Coinbase, Kraken, Bitstamp, Gemini, Bitfinex, Binance, OKX, Gate.io, Bybit")
-    print(f"  Endpoint:   GET /oracle/solusd (gated by Aperture)")
+    print(f"  Endpoint:   GET /oracle/solusd (gated by L402 proxy)")
     print(f"  Health:     GET /health (ungated)")
     uvicorn.run(app, host="0.0.0.0", port=port)
