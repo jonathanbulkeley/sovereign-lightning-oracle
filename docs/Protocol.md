@@ -217,10 +217,80 @@ These constraints are intentional and will not change:
 4. **No client authentication.** Payment is authentication. No API keys, no OAuth.
 5. **No data caching guarantee.** Each query hits the sources live. Freshness over efficiency.
 6. **No consensus between oracles.** Each oracle signs independently. Aggregation is the client's job.
+
+## x402 Payment Protocol (SHO)
+
+SHO extends the protocol with x402 payment support, accepting USDC on Base. The canonical message format is identical — only the signing scheme and payment mechanism differ.
+
+### Flow
+```
+1. Client  →  GET /oracle/btcusd           →  SHO Proxy
+2. Proxy   →  402 + payment requirements   →  Client
+3. Client  →  Send USDC on Base            →  Base chain
+4. Client  →  GET + X-Payment header       →  SHO Proxy
+5. Proxy   →  200 + Ed25519 signed data    →  Client
 ```
 
----
-
-Add that to `docs/Protocol.md` (replacing the old version). How's the channel?
+### 402 Response
+```json
+{
+  "error": "payment_required",
+  "x402": {
+    "version": "1",
+    "chain": "base",
+    "asset": "USDC",
+    "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "recipient": "0xD593...6700d",
+    "amount": "0.001",
+    "nonce": "752c6f1f5c46e8c9031a5a4cec5db1be",
+    "expires_in": 300
+  }
+}
 ```
-curl -k --header "Grpc-Metadata-macaroon: %MAC%" https://mycelia.m.voltageapp.io:8080/v1/channels/pending
+
+### Authenticated Retry
+
+After sending USDC on Base, the client retries with an `X-Payment` header:
+```
+GET /oracle/btcusd HTTP/1.1
+X-Payment: {"tx_hash":"0x5237...","nonce":"752c6f...","from":"0xD593..."}
+```
+
+### Ed25519 Signing
+
+x402 responses are signed with Ed25519 instead of secp256k1 ECDSA:
+
+- Curve: **Ed25519**
+- Hash: **SHA-256**
+- Process: `sign(SHA256(canonical))`
+
+```python
+import hashlib, base64
+from nacl.signing import VerifyKey
+
+def verify_ed25519(canonical: str, signature_b64: str, pubkey_hex: str) -> bool:
+    msg_hash = hashlib.sha256(canonical.encode()).digest()
+    sig = base64.b64decode(signature_b64)
+    vk = VerifyKey(bytes.fromhex(pubkey_hex))
+    vk.verify(msg_hash, sig)
+    return True
+```
+
+### Optimistic Delivery
+
+The x402 proxy returns signed attestations immediately upon receiving a valid payment header, before the transaction is confirmed on-chain. If the transaction later fails, the sending address is subject to tiered enforcement (grace cooldown → hard block).
+
+### Depeg Circuit Breaker
+
+If USDC deviates more than 2% from USD parity (median of 5 sources: Kraken, Bitstamp, Coinbase, Gemini, Bitfinex; minimum 2 required), the x402 proxy suspends payment acceptance and returns HTTP 503.
+
+### Dual Signing Identity
+
+Both L402 and x402 delivery use the same canonical message format. The same attestation can be verified by either key:
+
+| Delivery | Signing Scheme | Pubkey |
+|---|---|---|
+| L402 (SLO) | ECDSA secp256k1 | Published per-response |
+| x402 (SHO) | Ed25519 | `c40ad8cbd866189eecb7c68091a984644fb7736ef3b8d96cd31b600ef0072623` |
+
+A cross-certification statement binding both keys will be published, proving common ownership under a single oracle identity.

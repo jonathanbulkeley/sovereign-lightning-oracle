@@ -309,10 +309,90 @@ lnget caches tokens, so repeated requests within the token validity window don't
 3. **Use quorum.** A single oracle can lie. Two independent oracles lying in the same direction is much harder.
 4. **Check timestamps.** Reject assertions older than your staleness threshold (e.g., 60 seconds).
 5. **Monitor deviation.** If oracles start diverging beyond your threshold, halt and investigate.
+
+## x402 Integration (SHO — USDC on Base)
+
+SHO provides the same oracle data via x402 payments. Instead of Lightning, consumers pay with USDC on Base.
+
+### Quick Start
+```bash
+# Get oracle info (free)
+curl http://104.197.109.246:8402/sho/info
+
+# Request price — returns 402 with payment requirements
+curl http://104.197.109.246:8402/oracle/btcusd
 ```
 
----
+### Python x402 Client
+```python
+import json
+import hashlib
+import base64
+import requests
 
-Add that to `docs/CLIENT_INTEGRATION.md`. How's the channel looking?
+SHO_URL = "http://104.197.109.246:8402"
+
+def fetch_x402(endpoint: str, tx_hash: str, from_address: str) -> dict:
+    """Full x402 flow: request → get nonce → pay USDC → retry with proof."""
+
+    # Step 1: Get payment requirements
+    r = requests.get(f"{SHO_URL}{endpoint}")
+    if r.status_code != 402:
+        return r.json()
+    challenge = r.json()
+    nonce = challenge["x402"]["nonce"]
+
+    # Step 2: Send USDC on Base (done externally — you provide the tx_hash)
+
+    # Step 3: Retry with payment proof
+    payment = json.dumps({
+        "tx_hash": tx_hash,
+        "nonce": nonce,
+        "from": from_address,
+    })
+    r2 = requests.get(
+        f"{SHO_URL}{endpoint}",
+        headers={"X-Payment": payment},
+    )
+    return r2.json()
+
+
+def verify_ed25519(data: dict) -> bool:
+    """Verify Ed25519 signature on x402 response."""
+    try:
+        from nacl.signing import VerifyKey
+        msg_hash = hashlib.sha256(data["canonical"].encode()).digest()
+        sig = base64.b64decode(data["signature"])
+        vk = VerifyKey(bytes.fromhex(data["pubkey"]))
+        vk.verify(msg_hash, sig)
+        return True
+    except Exception:
+        return False
 ```
-curl -k --header "Grpc-Metadata-macaroon: %MAC%" https://mycelia.m.voltageapp.io:8080/v1/channels/pending
+
+### x402 Error Handling
+
+| HTTP Status | Meaning | Action |
+|---|---|---|
+| 402 | Payment required | Parse requirements, send USDC, retry with X-Payment header |
+| 200 | Success | Verify Ed25519 signature, parse data |
+| 400 | Invalid payment header or expired nonce | Re-request to get fresh nonce |
+| 403 | Address blocked (enforcement) | Grace cooldown or hard block — check `/sho/enforcement/{address}` |
+| 503 | Depeg circuit breaker active | USDC off peg — try again later or use L402 (Lightning) instead |
+
+### x402 Cost
+
+- Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL): **$0.001 USDC**
+- VWAP query: **$0.002 USDC**
+- Plus Base gas fee (~$0.001 per transaction)
+
+### Choosing Between L402 and x402
+
+| Use L402 (Lightning) when... | Use x402 (USDC) when... |
+|---|---|
+| You already have a Lightning wallet | You already have USDC on Base |
+| You want pseudonymous payments | You want EVM-native integration |
+| You're building on Bitcoin | You're building on Base/EVM |
+| Sub-second payment finality matters | You prefer stablecoin accounting |
+
+Both protocols return the same oracle data with the same canonical format. Only the signature scheme and payment mechanism differ.

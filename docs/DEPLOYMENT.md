@@ -9,15 +9,20 @@ Internet → L402 Proxy (:8080) → Oracle backends (:9100-9107)
           Voltage LND node       DLC Attestor (:9104)
           (creates & verifies
            invoices via REST)
+
+Internet → x402 Proxy (:8402) → Oracle backends (:9100-9107)
+                 ↕
+          Base RPC (USDC verification)
 ```
 
-The L402 proxy is a custom Go reverse proxy that replaces Aperture. It creates invoices via the LND REST API, mints L402 macaroons, and verifies payment tokens. All payment logic lives in the proxy; oracle backends are pure data servers.
+The L402 proxy is a custom Go reverse proxy that creates invoices via the LND REST API, mints L402 macaroons, and verifies payment tokens. The x402 proxy is a Python FastAPI server that verifies USDC payments on Base, re-signs attestations with Ed25519, and handles optimistic delivery. Both proxies route to the same oracle backends. All payment logic lives in the proxies; oracle backends are pure data servers.
 
 ## Port Assignments
 
 | Port | Service |
 |---|---|
-| 8080 | L402 proxy (public-facing) |
+| 8080 | L402 proxy (public-facing, Lightning) |
+| 8402 | x402 proxy (public-facing, USDC on Base) |
 | 9100 | BTCUSD spot oracle |
 | 9101 | BTCUSD VWAP oracle |
 | 9102 | ETHUSD spot oracle |
@@ -254,12 +259,67 @@ sudo systemctl start slo-l402-proxy
 | Proxy not forwarding | Verify oracle backend is running on expected port |
 | `go build` fails | Run `go mod tidy` then rebuild |
 
+## Step 6: Deploy x402 Proxy (SHO)
+
+### Install dependencies
+```bash
+pip install --break-system-packages PyNaCl httpx
+```
+
+### Configure
+Set your USDC receiving address on Base:
+```bash
+export SHO_PAYMENT_ADDRESS=0xYourUSDCAddressOnBase
+```
+
+### Test manually
+```bash
+python3 ~/slo/repo/sho/x402_proxy.py &
+curl http://127.0.0.1:8402/sho/info
+kill %1
+```
+
+### Create systemd service
+```bash
+sudo tee /etc/systemd/system/sho-x402-proxy.service << 'EOF'
+[Unit]
+Description=SHO x402 Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+Environment=SHO_PAYMENT_ADDRESS=0xYourUSDCAddressOnBase
+ExecStart=/usr/bin/python3 /home/YOUR_USER/slo/repo/sho/x402_proxy.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable sho-x402-proxy
+sudo systemctl start sho-x402-proxy
+```
+
+### Open firewall
+```bash
+gcloud compute firewall-rules create allow-sho-x402 \
+  --allow tcp:8402 --source-ranges 0.0.0.0/0 \
+  --description "SHO x402 proxy"
+```
+
+### Ed25519 key
+The proxy generates an Ed25519 signing key on first run at `sho/keys/sho_ed25519.key`. **Back this up.** If lost, you must generate a new key and redo the cross-certification. The key is gitignored.
+
 ## Adding a New Oracle
 
 1. Create the feed in `oracle/feeds/newpair.py` (fetch prices, compute median)
 2. Create the oracle server in `oracle/liveoracle_newpair_spot.py` (FastAPI, sign canonical message)
 3. Choose the next available port (e.g., 9108)
-4. Add the route to `main.go`: `"/oracle/newpair": {Backend: "http://127.0.0.1:9108", Price: 10},`
-5. Rebuild: `cd ~/slo-l402-proxy && go build -o slo-l402-proxy .`
-6. Start the oracle, restart the proxy
-7. Test: `curl -v http://YOUR_VM_IP:8080/oracle/newpair`
+4. Add the route to L402 proxy `main.go`: `"/oracle/newpair": {Backend: "http://127.0.0.1:9108", Price: 10},`
+5. Add the route to x402 proxy `sho/x402_proxy.py` ROUTES dict: `"/oracle/newpair": {"backend": "http://127.0.0.1:9108/oracle/newpair", "price_usd": 0.001},`
+6. Rebuild L402 proxy: `cd ~/slo-l402-proxy && go build -o slo-l402-proxy .`
+7. Start the oracle, restart both proxies
+8. Test: `curl -v http://YOUR_VM_IP:8080/oracle/newpair` (L402) and `curl http://YOUR_VM_IP:8402/oracle/newpair` (x402)

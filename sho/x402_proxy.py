@@ -275,24 +275,22 @@ DEPEG_CHECK_INTERVAL = 60  # seconds
 
 async def check_depeg() -> dict:
     """
-    Check USDC/USD peg using the oracle's own price feeds.
-    Returns: {"pegged": bool, "rate": float|None}
+    Check USDC/USD peg using 5 exchange sources (median, minimum 2 required).
+    Returns: {"pegged": bool, "rate": float|None, "sources": int}
     """
     global _depeg_active, _last_depeg_check
 
     now = time.time()
     if now - _last_depeg_check < DEPEG_CHECK_INTERVAL:
-        return {"pegged": not _depeg_active, "rate": None}
+        return {"pegged": not _depeg_active, "rate": None, "sources": 0}
 
     _last_depeg_check = now
 
     try:
-        # Query the EURUSD oracle backend (which fetches from multiple sources)
-        # For USDC/USD, we can check Kraken and Bitstamp directly
         async with httpx.AsyncClient(timeout=5) as client:
             rates = []
 
-            # Kraken USDC/USD
+            # 1. Kraken USDC/USD
             try:
                 r = await client.get("https://api.kraken.com/0/public/Ticker?pair=USDCUSD")
                 d = r.json()
@@ -300,16 +298,38 @@ async def check_depeg() -> dict:
             except Exception:
                 pass
 
-            # Bitstamp USDC/USD
+            # 2. Bitstamp USDC/USD
             try:
                 r = await client.get("https://www.bitstamp.net/api/v2/ticker/usdcusd/")
                 rates.append(float(r.json()["last"]))
             except Exception:
                 pass
 
-            if not rates:
-                # Can't determine peg — fail safe, keep current state
-                return {"pegged": not _depeg_active, "rate": None}
+            # 3. Coinbase USDC/USD
+            try:
+                r = await client.get("https://api.exchange.coinbase.com/products/USDC-USD/ticker")
+                rates.append(float(r.json()["price"]))
+            except Exception:
+                pass
+
+            # 4. Gemini USDC/USD
+            try:
+                r = await client.get("https://api.gemini.com/v1/pubticker/usdcusd")
+                rates.append(float(r.json()["last"]))
+            except Exception:
+                pass
+
+            # 5. Bitfinex USDC/USD
+            try:
+                r = await client.get("https://api-pub.bitfinex.com/v2/ticker/tUDCUSD")
+                rates.append(float(r.json()[6]))
+            except Exception:
+                pass
+
+            if len(rates) < 2:
+                # Insufficient sources — fail safe, keep current state
+                log.warning(f"Depeg check: only {len(rates)} sources available, need 2")
+                return {"pegged": not _depeg_active, "rate": None, "sources": len(rates)}
 
             import statistics
             usdc_rate = statistics.median(rates)
@@ -317,12 +337,14 @@ async def check_depeg() -> dict:
 
             if deviation > DEPEG_THRESHOLD:
                 if not _depeg_active:
-                    log.warning(f"DEPEG CIRCUIT BREAKER ACTIVE: USDC/USD = {usdc_rate:.4f} (deviation: {deviation:.4f})")
+                    log.warning(f"DEPEG CIRCUIT BREAKER ACTIVE: USDC/USD = {usdc_rate:.4f} (deviation: {deviation:.4f}, {len(rates)} sources)")
                 _depeg_active = True
-                return {"pegged": False, "rate": usdc_rate}
+                return {"pegged": False, "rate": usdc_rate, "sources": len(rates)}
             else:
                 if _depeg_active:
-                    log.info(f"Depeg circuit breaker cleared: USDC/USD = {usdc_rate:.4f}")
+                    log.info(f"Depeg circuit breaker cleared: USDC/USD = {usdc_rate:.4f} ({len(rates)} sources)")
+                _depeg_active = False
+                return {"pegged": True, "rate": usdc_rate, "sources": len(rates)}
                 _depeg_active = False
                 return {"pegged": True, "rate": usdc_rate}
 

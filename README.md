@@ -1,10 +1,10 @@
-# Sovereign Lightning Oracle (SLO)
+# Sovereign Lightning Oracle (SLO) + Sovereign HTTP Oracle (SHO)
 
-Pay sats. Get signed data. Trust math, not middlemen.
+Pay sats. Pay USDC. Get signed data. Trust math, not middlemen.
 
-SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. No API keys. No accounts. No trust. Just payment and proof.
+SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. SHO extends the same oracle to the x402 (HTTP 402) payment protocol, accepting USDC on Base. No API keys. No accounts. No trust. Just payment and proof.
 
-BTCUSD, ETHUSD, EURUSD, XAU/USD (gold), BTC/EUR, and SOL/USD are live on Bitcoin mainnet — alongside the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
+BTCUSD, ETHUSD, EURUSD, XAU/USD (gold), BTC/EUR, and SOL/USD are live on Bitcoin mainnet via L402 Lightning payments — and on Base via x402 USDC payments. The oracle includes the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
 
 ## Try It Now
 
@@ -45,6 +45,71 @@ The VWAP oracle costs more because it processes full trade history rather than a
 Announcements are free to encourage adoption — the more contracts built against SLO, the more attestation revenue.
 
 > ⚡ **Status: Beta** — Live on Bitcoin mainnet. Endpoints may go down for maintenance.
+
+## SHO — x402 Payment Protocol (USDC on Base)
+
+SHO delivers the same oracle data over the x402 payment protocol. Instead of Lightning sats, consumers pay with USDC on Base. Attestations are signed with Ed25519 instead of secp256k1 — same canonical message, different signature scheme.
+
+### Try It Now (x402)
+```bash
+# Get oracle info (free)
+curl http://104.197.109.246:8402/sho/info
+
+# Request price data — returns 402 with USDC payment requirements
+curl http://104.197.109.246:8402/oracle/btcusd
+```
+
+### x402-gated endpoints (pay per query in USDC)
+
+| Endpoint | Asset | Price (USDC) | Sources |
+|---|---|---|---|
+| `/oracle/btcusd` | BTC/USD | $0.001 | 9 sources |
+| `/oracle/btcusd/vwap` | BTC/USD | $0.002 | Coinbase, Kraken |
+| `/oracle/ethusd` | ETH/USD | $0.001 | 5 sources |
+| `/oracle/eurusd` | EUR/USD | $0.001 | 7 sources |
+| `/oracle/xauusd` | XAU/USD | $0.001 | 8 sources |
+| `/oracle/btceur` | BTC/EUR | $0.001 | 16 sources |
+| `/oracle/solusd` | SOL/USD | $0.001 | 9 sources |
+
+### x402 Flow
+
+1. Consumer requests price data → oracle returns HTTP 402 with payment requirements (chain, asset, contract, amount, nonce)
+2. Consumer sends USDC to oracle's payment address on Base
+3. Consumer retries with `X-Payment` header containing transaction hash and nonce
+4. Oracle verifies payment on-chain (optimistic delivery — responds before block confirmation)
+5. Oracle returns Ed25519-signed attestation
+
+### x402 Response Format
+```json
+{
+  "domain": "BTCUSD",
+  "canonical": "v1|BTCUSD|64179.76|USD|2|2026-02-24T17:48:21Z|890123|binance,...|median",
+  "signature": "3yYxQATXEqFgwjzG+CLmzLdlSBODbQc03q2xnu49KU0t...",
+  "signing_scheme": "ed25519",
+  "pubkey": "c40ad8cbd866189eecb7c68091a984644fb7736ef3b8d96cd31b600ef0072623",
+  "payment": {
+    "protocol": "x402",
+    "tx_hash": "0x5237...",
+    "confirmed": true
+  }
+}
+```
+
+### Oracle Identity
+
+Both L402 and x402 delivery use the same oracle core — same sources, same aggregation, same canonical message format. Only the signature and delivery differ:
+
+| Protocol | Port | Signing | Payment |
+|---|---|---|---|
+| L402 (SLO) | 8080 | ECDSA secp256k1 | Lightning sats |
+| x402 (SHO) | 8402 | Ed25519 | USDC on Base |
+
+### Safety Features
+
+- **Depeg circuit breaker:** If USDC deviates >2% from USD parity (median of 5 sources: Kraken, Bitstamp, Coinbase, Gemini, Bitfinex; minimum 2 required), x402 payment acceptance is automatically suspended
+- **Tiered enforcement:** Failed payments trigger a 10-minute grace cooldown (Tier 1); 10+ failures in 7 days trigger a hard block (Tier 3)
+- **Replay protection:** Single-use request nonces prevent payment replay attacks
+- **Optimistic delivery:** Attestations returned before on-chain confirmation; failed payments tracked asynchronously
 
 ### Local demo (no Lightning node needed)
 
@@ -185,6 +250,13 @@ slo/
 │   ├── attestor.py                    # Schnorr nonce commitment & attestation
 │   ├── server.py                      # DLC API server (FastAPI, port 9104)
 │   └── scheduler.py                   # Hourly attestation loop
+├── sho/
+│   ├── __init__.py
+│   ├── x402_proxy.py                  # x402 payment proxy (USDC on Base, Ed25519 signing)
+│   ├── cross_certify.py               # Cross-certification tool (secp256k1 ↔ Ed25519)
+│   ├── test_client.py                 # End-to-end x402 test client
+│   ├── requirements.txt               # SHO-specific dependencies
+│   └── keys/                          # Ed25519 signing key (gitignored)
 ├── l402-proxy/
 │   ├── main.go                        # L402 payment proxy (Go, uses LND REST API)
 │   └── go.mod                         # Go module dependencies
@@ -231,15 +303,15 @@ SLO does not decide which oracle is correct. That responsibility belongs to the 
 
 ## Architecture
 
-SLO uses the L402 protocol to gate API access behind Lightning micropayments:
+The oracle uses a shared core with dual delivery layers:
 
-- **L402 Proxy** — Lightweight Go reverse proxy that creates invoices via LND REST API, mints L402 macaroons, and verifies payment tokens. Uses Go's standard `macaroon.v2` library for full L402 spec compliance.
-- **LND Node** — Voltage-hosted Lightning node (mainnet) for invoice creation and payment settlement
-- **lnget** — CLI client that handles L402 payments transparently
-- **Oracle servers** — Stateless FastAPI services that fetch prices, sign assertions, and return JSON
+- **Oracle servers** — Stateless FastAPI services that fetch prices, sign assertions (secp256k1), and return JSON. One per trading pair, each on its own port (9100–9107).
+- **L402 Proxy (SLO)** — Lightweight Go reverse proxy on port 8080. Creates Lightning invoices via LND REST API, mints L402 macaroons, verifies payment tokens, proxies to oracle backends.
+- **x402 Proxy (SHO)** — Python FastAPI proxy on port 8402. Verifies USDC payments on Base, re-signs attestations with Ed25519, handles optimistic delivery, depeg circuit breaker, and tiered enforcement.
+- **LND Node** — Voltage-hosted Lightning node (mainnet) for L402 invoice creation and payment settlement
 - **DLC attestor** — Scheduled Schnorr signing service with persistent oracle key and hourly attestation loop
 
-The oracle servers contain zero payment logic. The L402 proxy enforces the "payment before data" invariant at the proxy layer.
+The oracle servers contain zero payment logic. Both proxies enforce "payment before data" at the proxy layer, routing to the same backends.
 
 ## For AI Agents
 
@@ -303,6 +375,11 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 - [x] XAU/USD gold oracle (8 sources: Kitco, JM Bullion, GoldBroker + 5 PAXG exchanges)
 - [x] BTC/EUR cross-rate oracle (derived from BTCUSD + EURUSD, 16 sources)
 - [x] SOL/USD spot oracle (9 sources: 5 USD + 4 USDT with normalization)
+- [x] **SHO x402 proxy — USDC payments on Base, Ed25519 signing, optimistic delivery**
+- [x] **Depeg circuit breaker (USDC/USD peg monitoring, 5 sources with median)**
+- [x] **Tiered enforcement for failed payments (grace cooldown + hard block)**
+- [ ] Cross-certification statement (secp256k1 ↔ Ed25519)
+- [ ] x402 session tokens (prepaid balances for high-frequency consumers)
 - [ ] Commodity oracles (oil)
 - [ ] Interest rate oracles (Fed funds, SOFR)
 - [ ] Multi-operator federation
