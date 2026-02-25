@@ -136,9 +136,11 @@ This separation means oracle code is simple, testable, and payment-agnostic.
 
 ### Endpoints
 
-Oracles expose HTTP GET endpoints. The URL path determines the data type:
+All endpoints are served via `https://api.myceliasignal.com` with Cloudflare TLS. nginx routes requests to the appropriate backend proxy.
 
-| Path | Data |
+#### L402 endpoints (Lightning payment)
+
+| Public Path | Data |
 |---|---|
 | `/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
 | `/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
@@ -148,11 +150,31 @@ Oracles expose HTTP GET endpoints. The URL path determines the data type:
 | `/oracle/btceur` | BTC/EUR cross-rate (derived from BTCUSD + EURUSD) |
 | `/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
 | `/dlc/oracle/attestations/{id}` | DLC Schnorr attestation (1000 sats) |
-| `/health` | Health check (not payment-gated) |
-| `/oracle/status` | Oracle status (not payment-gated) |
-| `/dlc/oracle/pubkey` | DLC oracle public key (not payment-gated) |
-| `/dlc/oracle/announcements` | DLC nonce commitments (not payment-gated) |
-| `/dlc/oracle/status` | DLC oracle status (not payment-gated) |
+
+#### x402 endpoints (USDC on Base)
+
+| Public Path | Data |
+|---|---|
+| `/sho/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
+| `/sho/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
+| `/sho/oracle/ethusd` | ETHUSD spot price (median, 5 sources) |
+| `/sho/oracle/eurusd` | EURUSD spot price (median, 7 sources) |
+| `/sho/oracle/xauusd` | XAU/USD gold spot price (median, 8 sources) |
+| `/sho/oracle/btceur` | BTC/EUR cross-rate |
+| `/sho/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
+
+Note: nginx strips the `/sho/` prefix before proxying to the x402 backend, so the x402 proxy internally handles `/oracle/*` paths.
+
+#### Free endpoints (no payment)
+
+| Public Path | Data |
+|---|---|
+| `/health` | L402 proxy health check |
+| `/sho/health` | x402 proxy health check |
+| `/sho/info` | x402 oracle info (pubkey, endpoints, pricing) |
+| `/dlc/oracle/pubkey` | DLC oracle public key |
+| `/dlc/oracle/announcements` | DLC nonce commitments |
+| `/dlc/oracle/status` | DLC oracle status |
 
 ### Content Type
 
@@ -224,11 +246,11 @@ SHO extends the protocol with x402 payment support, accepting USDC on Base. The 
 
 ### Flow
 ```
-1. Client  →  GET /oracle/btcusd           →  SHO Proxy
-2. Proxy   →  402 + payment requirements   →  Client
-3. Client  →  Send USDC on Base            →  Base chain
-4. Client  →  GET + X-Payment header       →  SHO Proxy
-5. Proxy   →  200 + Ed25519 signed data    →  Client
+1. Client  →  GET /sho/oracle/btcusd       →  nginx → SHO Proxy
+2. Proxy   →  402 + payment requirements    →  Client
+3. Client  →  Send USDC on Base             →  Base chain
+4. Client  →  GET + X-Payment header        →  nginx → SHO Proxy
+5. Proxy   →  200 + Ed25519 signed data     →  Client
 ```
 
 ### 402 Response
@@ -240,7 +262,7 @@ SHO extends the protocol with x402 payment support, accepting USDC on Base. The 
     "chain": "base",
     "asset": "USDC",
     "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    "recipient": "0xD593...6700d",
+    "recipient": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
     "amount": "0.001",
     "nonce": "752c6f1f5c46e8c9031a5a4cec5db1be",
     "expires_in": 300
@@ -252,7 +274,7 @@ SHO extends the protocol with x402 payment support, accepting USDC on Base. The 
 
 After sending USDC on Base, the client retries with an `X-Payment` header:
 ```
-GET /oracle/btcusd HTTP/1.1
+GET /sho/oracle/btcusd HTTP/1.1
 X-Payment: {"tx_hash":"0x5237...","nonce":"752c6f...","from":"0xD593..."}
 ```
 
@@ -290,7 +312,7 @@ Both L402 and x402 delivery use the same canonical message format. The same atte
 
 | Delivery | Signing Scheme | Pubkey |
 |---|---|---|
-| L402 (SLO) | ECDSA secp256k1 | Published per-response |
+| L402 (SLO) | ECDSA secp256k1 | `0236a051b7a0384ebe19fe31fcee6837bff7a9532a2a9ae04731ea04df5cd94adf` |
 | x402 (SHO) | Ed25519 | `c40ad8cbd866189eecb7c68091a984644fb7736ef3b8d96cd31b600ef0072623` |
 
 A cross-certification statement binding both keys will be published, proving common ownership under a single oracle identity.

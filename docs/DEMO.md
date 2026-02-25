@@ -1,14 +1,18 @@
 # SLO Live Demo
 
-A step-by-step walkthrough of purchasing signed BTCUSD price data for Lightning sats.
+A step-by-step walkthrough of purchasing signed price data for Lightning sats or USDC.
 
 ## What You'll See
 
-1. An HTTP 402 (Payment Required) with a Lightning invoice
-2. A Lightning payment for 10 sats
-3. A signed BTCUSD price assertion you can verify independently
+1. An HTTP 402 (Payment Required) with a Lightning invoice or USDC payment instructions
+2. A payment (10 sats or $0.001 USDC)
+3. A signed price assertion you can verify independently
 
-## Step 1: Request Price Data
+---
+
+## L402 Demo (Lightning)
+
+### Step 1: Request Price Data
 ```bash
 curl -v https://api.myceliasignal.com/oracle/btcusd
 ```
@@ -25,16 +29,16 @@ The server returns a 402 with two things:
 
 No data is released. Payment first.
 
-## Step 2: Pay the Invoice
+### Step 2: Pay the Invoice
 
-### Option A: lnget (automatic)
+#### Option A: lnget (automatic)
 ```bash
 lnget -k https://api.myceliasignal.com/oracle/btcusd
 ```
 
 lnget handles the full L402 flow — receives the 402, pays the invoice, retries with the token, and prints the response. One command.
 
-### Option B: Any Lightning wallet
+#### Option B: Any Lightning wallet
 
 Copy the invoice string (`lnbc100n1p5c...`) from the 402 response and paste it into any Lightning wallet:
 - Phoenix Wallet (mobile)
@@ -47,7 +51,7 @@ After payment, retry the request with the L402 token:
 curl -H "Authorization: L402 <macaroon>:<preimage>" https://api.myceliasignal.com/oracle/btcusd
 ```
 
-## Step 3: Receive Signed Data
+### Step 3: Receive Signed Data
 
 After payment, the oracle returns:
 ```json
@@ -59,7 +63,7 @@ After payment, the oracle returns:
 }
 ```
 
-### Reading the canonical message
+#### Reading the canonical message
 ```
 v1|BTCUSD|96482.15|USD|2|2026-02-13T18:44:30Z|890123|coinbase,kraken,bitstamp|median
 │  │      │        │  │ │                      │      │                        │
@@ -74,7 +78,7 @@ v1|BTCUSD|96482.15|USD|2|2026-02-13T18:44:30Z|890123|coinbase,kraken,bitstamp|me
 └─ protocol version
 ```
 
-## Step 4: Verify the Signature
+### Step 4: Verify the Signature
 
 The response is self-verifying. No trust in the transport required.
 ```python
@@ -96,7 +100,7 @@ print("Signature valid — this price was signed by this oracle.")
 
 If the signature verifies, the oracle committed to this price at this timestamp. If it doesn't, reject it.
 
-## Step 5: Query Multiple Oracles (Quorum)
+### Step 5: Query Multiple Oracles (Quorum)
 
 For higher assurance, query both the spot and VWAP oracles and compare:
 ```bash
@@ -135,6 +139,105 @@ QUORUM RESULT
 
 Two oracles. Two signatures. Two methodologies. One price you can trust.
 
+---
+
+## x402 Demo (USDC on Base)
+
+### Step 1: Request Price Data
+```bash
+curl -v https://api.myceliasignal.com/sho/oracle/btcusd
+```
+
+Response:
+```json
+{
+  "error": "payment_required",
+  "x402": {
+    "version": "1",
+    "chain": "base",
+    "asset": "USDC",
+    "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "recipient": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+    "amount": "0.001",
+    "nonce": "752c6f1f5c46e8c9031a5a4cec5db1be",
+    "expires_in": 300
+  }
+}
+```
+
+The server returns a 402 with USDC payment requirements: chain (Base), asset (USDC), contract address, recipient, amount ($0.001), and a nonce that expires in 5 minutes.
+
+### Step 2: Send USDC on Base
+
+Send **0.001 USDC** to the `recipient` address on Base using any wallet (MetaMask, Coinbase Wallet, etc.). Save the transaction hash.
+
+### Step 3: Retry with Payment Proof
+```bash
+curl -H 'X-Payment: {"tx_hash":"0xYOUR_TX_HASH","nonce":"752c6f1f5c46e8c9031a5a4cec5db1be","from":"0xYOUR_WALLET_ADDRESS"}' \
+  https://api.myceliasignal.com/sho/oracle/btcusd
+```
+
+### Step 4: Receive Ed25519-Signed Data
+```json
+{
+  "domain": "BTCUSD",
+  "canonical": "v1|BTCUSD|64179.76|USD|2|2026-02-24T17:48:21Z|890123|binance,...|median",
+  "signature": "3yYxQATXEqFgwjzG+CLmzLdlSBODbQc03q2xnu49KU0t...",
+  "signing_scheme": "ed25519",
+  "pubkey": "c40ad8cbd866189eecb7c68091a984644fb7736ef3b8d96cd31b600ef0072623",
+  "payment": {
+    "protocol": "x402",
+    "tx_hash": "0xYOUR_TX_HASH",
+    "confirmed": true
+  }
+}
+```
+
+### Step 5: Verify Ed25519 Signature
+```python
+import hashlib, base64
+from nacl.signing import VerifyKey
+
+canonical = "v1|BTCUSD|64179.76|USD|2|2026-02-24T17:48:21Z|890123|binance,...|median"
+signature = "3yYxQATXEqFgwjzG+CLmzLdlSBODbQc03q2xnu49KU0t..."
+pubkey = "c40ad8cbd866189eecb7c68091a984644fb7736ef3b8d96cd31b600ef0072623"
+
+msg_hash = hashlib.sha256(canonical.encode()).digest()
+sig_bytes = base64.b64decode(signature)
+vk = VerifyKey(bytes.fromhex(pubkey))
+vk.verify(msg_hash, sig_bytes)
+print("Ed25519 signature valid — same oracle, different key.")
+```
+
+Same canonical format, same price, same sources — different signature scheme for a different payment rail.
+
+---
+
+## Free Endpoints (No Payment Required)
+
+These endpoints return data without any payment:
+```bash
+# L402 proxy health
+curl https://api.myceliasignal.com/health
+
+# x402 proxy health
+curl https://api.myceliasignal.com/sho/health
+
+# x402 oracle info (pubkey, endpoints, pricing)
+curl https://api.myceliasignal.com/sho/info
+
+# DLC oracle public key
+curl https://api.myceliasignal.com/dlc/oracle/pubkey
+
+# DLC oracle status
+curl https://api.myceliasignal.com/dlc/oracle/status
+
+# DLC upcoming announcements
+curl https://api.myceliasignal.com/dlc/oracle/announcements
+```
+
+---
+
 ## Local Demo (No Bitcoin Required)
 
 If you don't have a Lightning wallet, you can run the full L402 flow locally using Polar (Bitcoin regtest):
@@ -147,13 +250,6 @@ Same protocol, same code, zero real sats.
 
 ## What Just Happened
 
-You paid a machine 10 sats (~$0.007) and received a cryptographically signed price assertion that you verified independently. No API key. No account. No trust. The oracle can't revoke your access. You can't use the data without paying. The incentives are aligned by construction.
+You paid a machine 10 sats (~$0.007) or $0.001 USDC and received a cryptographically signed price assertion that you verified independently. No API key. No account. No trust. The oracle can't revoke your access. You can't use the data without paying. The incentives are aligned by construction.
 
-This is what machine-payable, verifiable data looks like on the Lightning Network.
-```
-
----
-
-Add that to `docs/DEMO.md`. Now check your channel:
-```
-curl -k --header "Grpc-Metadata-macaroon: %MAC%" https://mycelia.m.voltageapp.io:8080/v1/channels/pending
+This is what machine-payable, verifiable data looks like.

@@ -37,10 +37,12 @@ The VWAP oracle costs more because it processes full trade history rather than a
 
 | Endpoint | Description |
 |---|---|
-| `https://api.myceliasignal.com/health` | Health check |
-| `https://api.myceliasignal.com/oracle/status` | Oracle status and statistics |
+| `https://api.myceliasignal.com/health` | L402 proxy health check |
+| `https://api.myceliasignal.com/sho/health` | x402 proxy health check |
+| `https://api.myceliasignal.com/sho/info` | x402 oracle info (pubkey, endpoints, pricing) |
 | `https://api.myceliasignal.com/dlc/oracle/pubkey` | Oracle's persistent Schnorr public key |
 | `https://api.myceliasignal.com/dlc/oracle/announcements` | List upcoming events with nonce commitments |
+| `https://api.myceliasignal.com/dlc/oracle/status` | DLC oracle status and statistics |
 
 Announcements are free to encourage adoption — the more contracts built against SLO, the more attestation revenue.
 
@@ -56,24 +58,24 @@ SHO delivers the same oracle data over the x402 payment protocol. Instead of Lig
 curl https://api.myceliasignal.com/sho/info
 
 # Request price data — returns 402 with USDC payment requirements
-curl https://api.myceliasignal.com/oracle/btcusd
+curl https://api.myceliasignal.com/sho/oracle/btcusd
 ```
 
 ### x402-gated endpoints (pay per query in USDC)
 
 | Endpoint | Asset | Price (USDC) | Sources |
 |---|---|---|---|
-| `/oracle/btcusd` | BTC/USD | $0.001 | 9 sources |
-| `/oracle/btcusd/vwap` | BTC/USD | $0.002 | Coinbase, Kraken |
-| `/oracle/ethusd` | ETH/USD | $0.001 | 5 sources |
-| `/oracle/eurusd` | EUR/USD | $0.001 | 7 sources |
-| `/oracle/xauusd` | XAU/USD | $0.001 | 8 sources |
-| `/oracle/btceur` | BTC/EUR | $0.001 | 16 sources |
-| `/oracle/solusd` | SOL/USD | $0.001 | 9 sources |
+| `/sho/oracle/btcusd` | BTC/USD | $0.001 | 9 sources |
+| `/sho/oracle/btcusd/vwap` | BTC/USD | $0.002 | Coinbase, Kraken |
+| `/sho/oracle/ethusd` | ETH/USD | $0.001 | 5 sources |
+| `/sho/oracle/eurusd` | EUR/USD | $0.001 | 7 sources |
+| `/sho/oracle/xauusd` | XAU/USD | $0.001 | 8 sources |
+| `/sho/oracle/btceur` | BTC/EUR | $0.001 | 16 sources |
+| `/sho/oracle/solusd` | SOL/USD | $0.001 | 9 sources |
 
 ### x402 Flow
 
-1. Consumer requests price data → oracle returns HTTP 402 with payment requirements (chain, asset, contract, amount, nonce)
+1. Consumer requests price data (e.g., `GET /sho/oracle/btcusd`) → oracle returns HTTP 402 with payment requirements (chain, asset, contract, amount, nonce)
 2. Consumer sends USDC to oracle's payment address on Base
 3. Consumer retries with `X-Payment` header containing transaction hash and nonce
 4. Oracle verifies payment on-chain (optimistic delivery — responds before block confirmation)
@@ -234,17 +236,17 @@ slo/
 │   │   ├── btcusd.py                  # 9-source BTCUSD feed with USDT normalization
 │   │   ├── ethusd.py                  # 5-source ETH feed
 │   │   ├── eurusd.py                  # 7-source EUR/USD feed (5 central banks)
-│   │   └── btcusd_vwap.py             # VWAP feed (Coinbase, Kraken trades)
-│   │   ├── xauusd.py                   # 8-source XAU/USD feed (traditional + PAXG)
-│   │   ├── btceur.py                   # BTC/EUR cross-rate derivation
-│   │   ├── solusd.py                   # 9-source SOL/USD feed with USDT normalization
+│   │   ├── btcusd_vwap.py             # VWAP feed (Coinbase, Kraken trades)
+│   │   ├── xauusd.py                  # 8-source XAU/USD feed (traditional + PAXG)
+│   │   ├── btceur.py                  # BTC/EUR cross-rate derivation
+│   │   └── solusd.py                  # 9-source SOL/USD feed with USDT normalization
 │   ├── liveoracle_btcusd_spot.py      # BTC spot oracle (10 sats, 9 sources)
 │   ├── liveoracle_btcusd_vwap.py      # BTC VWAP oracle (20 sats, 2 sources)
 │   ├── liveoracle_ethusd_spot.py      # ETH spot oracle (10 sats, 5 sources)
-│   └── liveoracle_eurusd_spot.py      # EUR/USD oracle (10 sats, 7 sources)
+│   ├── liveoracle_eurusd_spot.py      # EUR/USD oracle (10 sats, 7 sources)
 │   ├── liveoracle_xauusd_spot.py      # Gold spot oracle (10 sats, 8 sources)
 │   ├── liveoracle_btceur_spot.py      # BTC/EUR cross-rate oracle (10 sats, 16 sources)
-│   ├── liveoracle_solusd_spot.py      # SOL/USD spot oracle (10 sats, 9 sources)
+│   └── liveoracle_solusd_spot.py      # SOL/USD spot oracle (10 sats, 9 sources)
 ├── dlc/
 │   ├── __init__.py
 │   ├── attestor.py                    # Schnorr nonce commitment & attestation
@@ -259,11 +261,14 @@ slo/
 │   └── keys/                          # Ed25519 signing key (gitignored)
 ├── l402-proxy/
 │   ├── main.go                        # L402 payment proxy (Go, uses LND REST API)
-│   └── go.mod                         # Go module dependencies
+│   ├── go.mod                         # Go module dependencies
+│   └── go.sum
 ├── mcp/
 │   └── slo_mcp_server.py             # MCP server for AI agents
 ├── client/
 │   └── quorum_client_l402.py          # L402-aware quorum client
+├── config/
+│   └── aperture.yaml                  # Legacy Aperture config (reference only)
 ├── docs/
 │   ├── POLAR_SETUP.md                 # Local demo guide (Polar + regtest)
 │   ├── DEPLOYMENT.md                  # Production deployment guide
@@ -277,6 +282,29 @@ slo/
 ├── LICENSE
 └── README.md
 ```
+
+## Infrastructure
+
+### Domain & TLS
+
+All endpoints are served via `api.myceliasignal.com` with Cloudflare TLS termination. Cloudflare proxies HTTPS traffic to an nginx reverse proxy on the VM, which routes to the appropriate backend:
+
+```
+Internet → Cloudflare (HTTPS) → nginx (:80) → L402 proxy (:8080)
+                                            → x402 proxy (:8402)
+                                            → DLC server (:9104)
+```
+
+nginx routes:
+- `/oracle/*` and `/health` → L402 proxy (port 8080)
+- `/sho/*` → x402 proxy (port 8402), with `/sho/` prefix stripped
+- `/dlc/*` → L402 proxy (port 8080)
+
+### Known Issue: Go TLS + Cloudflare
+
+Go's default TLS ClientHello is fingerprinted and rejected by Cloudflare's bot protection. This affects `lnget` and any Go HTTP client hitting `https://api.myceliasignal.com`. Python `urllib` and `curl` work fine through Cloudflare.
+
+**Workaround for MCP server / lnget users:** The MCP server uses the VM's direct IP for L402 calls (bypassing Cloudflare) while using the HTTPS domain for free endpoints via Python urllib. If you're building a Go client, either use the direct IP or configure a TLS fingerprint that Cloudflare accepts.
 
 ## Protocol (v1)
 
@@ -308,6 +336,7 @@ The oracle uses a shared core with dual delivery layers:
 - **Oracle servers** — Stateless FastAPI services that fetch prices, sign assertions (secp256k1), and return JSON. One per trading pair, each on its own port (9100–9107).
 - **L402 Proxy (SLO)** — Lightweight Go reverse proxy on port 8080. Creates Lightning invoices via LND REST API, mints L402 macaroons, verifies payment tokens, proxies to oracle backends.
 - **x402 Proxy (SHO)** — Python FastAPI proxy on port 8402. Verifies USDC payments on Base, re-signs attestations with Ed25519, handles optimistic delivery, depeg circuit breaker, and tiered enforcement.
+- **nginx** — Reverse proxy on port 80. Routes `/oracle/*` to L402, `/sho/*` to x402 (stripping prefix), `/dlc/*` to L402. Sits behind Cloudflare.
 - **LND Node** — Voltage-hosted Lightning node (mainnet) for L402 invoice creation and payment settlement
 - **DLC attestor** — Scheduled Schnorr signing service with persistent oracle key and hourly attestation loop
 
@@ -331,8 +360,8 @@ SLO includes an MCP (Model Context Protocol) server that lets AI assistants like
 
 **Setup:**
 
-1. Install dependencies: `pip install fastmcp ecdsa`
-2. Ensure `lnget` is installed and configured
+1. Install dependencies: `pip install fastmcp ecdsa pynacl`
+2. Ensure `lnget` is installed and configured with a Lightning wallet
 3. Add to your Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json`):
 ```json
 {
@@ -349,17 +378,32 @@ SLO includes an MCP (Model Context Protocol) server that lets AI assistants like
 
 Claude will pay sats over Lightning and return a cryptographically signed price. No API key. No configuration beyond a Lightning wallet.
 
-**Available Tools:**
+**Note:** The MCP server uses the VM's direct IP for L402 calls to work around a Cloudflare/Go TLS compatibility issue. See the Infrastructure section for details.
 
-| Tool | Cost | Description |
-|---|---|---|
-| `get_btcusd_spot` | 10 sats | Median BTC spot price from 9 sources |
-| `get_btcusd_vwap` | 20 sats | Volume-weighted average from Coinbase, Kraken |
-| `get_ethusd_spot` | 10 sats | Median ETH spot price from 5 exchanges |
-| `get_eurusd_spot` | 10 sats | Median EUR/USD from 5 central banks + 2 exchanges |
-| `get_xauusd_spot` | 10 sats | Median gold price from 3 traditional + 5 PAXG exchanges |
-| `get_btceur_spot` | 10 sats | BTC/EUR cross-rate derived from BTCUSD + EURUSD |
-| `get_solusd_spot` | 10 sats | Median SOL spot price from 9 sources |
+**Available MCP Tools:**
+
+| Tool | Protocol | Cost | Description |
+|---|---|---|---|
+| `get_btcusd_spot` | L402 | 10 sats | Median BTC spot price from 9 sources |
+| `get_btcusd_vwap` | L402 | 20 sats | Volume-weighted average from Coinbase, Kraken |
+| `get_ethusd_spot` | L402 | 10 sats | Median ETH spot price from 5 exchanges |
+| `get_eurusd_spot` | L402 | 10 sats | Median EUR/USD from 5 central banks + 2 exchanges |
+| `get_xauusd_spot` | L402 | 10 sats | Median gold price from 8 sources |
+| `get_btceur_spot` | L402 | 10 sats | BTC/EUR cross-rate derived from BTCUSD + EURUSD |
+| `get_solusd_spot` | L402 | 10 sats | Median SOL spot price from 9 sources |
+| `sho_get_info` | Free | — | x402 oracle info and endpoint listing |
+| `sho_get_health` | Free | — | x402 proxy health check |
+| `sho_get_btcusd_spot` | x402 | $0.001 | BTC/USD via x402 (returns payment instructions) |
+| `sho_get_btcusd_vwap` | x402 | $0.002 | BTC/USD VWAP via x402 |
+| `sho_get_ethusd_spot` | x402 | $0.001 | ETH/USD via x402 |
+| `sho_get_eurusd_spot` | x402 | $0.001 | EUR/USD via x402 |
+| `sho_get_xauusd_spot` | x402 | $0.001 | XAU/USD via x402 |
+| `sho_get_btceur_spot` | x402 | $0.001 | BTC/EUR via x402 |
+| `sho_get_solusd_spot` | x402 | $0.001 | SOL/USD via x402 |
+| `get_dlc_pubkey` | Free | — | DLC oracle public key |
+| `get_dlc_status` | Free | — | DLC oracle status and stats |
+| `get_dlc_announcements` | Free | — | Upcoming DLC event announcements |
+| `get_dlc_attestation` | L402 | 1000 sats | Specific DLC attestation by event ID |
 
 ## Roadmap
 
@@ -378,12 +422,13 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 - [x] **SHO x402 proxy — USDC payments on Base, Ed25519 signing, optimistic delivery**
 - [x] **Depeg circuit breaker (USDC/USD peg monitoring, 5 sources with median)**
 - [x] **Tiered enforcement for failed payments (grace cooldown + hard block)**
+- [x] **Domain name + TLS** (api.myceliasignal.com via Cloudflare)
 - [ ] Cross-certification statement (secp256k1 ↔ Ed25519)
 - [ ] x402 session tokens (prepaid balances for high-frequency consumers)
+- [ ] x402 client SDK (auto-payment integration for MCP and programmatic consumers)
 - [ ] Commodity oracles (oil)
 - [ ] Interest rate oracles (Fed funds, SOFR)
 - [ ] Multi-operator federation
-- [ ] Domain name + TLS
 
 ## Design Philosophy
 

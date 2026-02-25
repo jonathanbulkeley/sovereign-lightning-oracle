@@ -29,6 +29,8 @@ lnget -k -q https://api.myceliasignal.com/oracle/btcusd | jq .
 
 lnget caches L402 tokens, so repeated requests to the same endpoint reuse the token until it expires.
 
+**Note:** Go's default TLS ClientHello is fingerprinted and rejected by Cloudflare's bot protection. If you experience 400 errors with lnget through the HTTPS domain, use the VM's direct IP as a workaround or configure a custom TLS profile. `curl` and Python `urllib` work fine through Cloudflare.
+
 ## Python Integration
 
 ### With lnget (subprocess)
@@ -319,8 +321,11 @@ SHO provides the same oracle data via x402 payments. Instead of Lightning, consu
 # Get oracle info (free)
 curl https://api.myceliasignal.com/sho/info
 
+# Get health status (free)
+curl https://api.myceliasignal.com/sho/health
+
 # Request price — returns 402 with payment requirements
-curl https://api.myceliasignal.com/oracle/btcusd
+curl https://api.myceliasignal.com/sho/oracle/btcusd
 ```
 
 ### Python x402 Client
@@ -330,13 +335,13 @@ import hashlib
 import base64
 import requests
 
-SHO_URL = "https://api.myceliasignal.com"
+SHO_URL = "https://api.myceliasignal.com/sho"
 
-def fetch_x402(endpoint: str, tx_hash: str, from_address: str) -> dict:
+def fetch_x402(pair: str, tx_hash: str, from_address: str) -> dict:
     """Full x402 flow: request → get nonce → pay USDC → retry with proof."""
 
     # Step 1: Get payment requirements
-    r = requests.get(f"{SHO_URL}{endpoint}")
+    r = requests.get(f"{SHO_URL}/oracle/{pair}")
     if r.status_code != 402:
         return r.json()
     challenge = r.json()
@@ -351,7 +356,7 @@ def fetch_x402(endpoint: str, tx_hash: str, from_address: str) -> dict:
         "from": from_address,
     })
     r2 = requests.get(
-        f"{SHO_URL}{endpoint}",
+        f"{SHO_URL}/oracle/{pair}",
         headers={"X-Payment": payment},
     )
     return r2.json()
