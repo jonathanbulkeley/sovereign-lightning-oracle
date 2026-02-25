@@ -10,10 +10,10 @@ BTCUSD, ETHUSD, EURUSD, XAU/USD (gold), BTC/EUR, and SOL/USD are live on Bitcoin
 
 ### Live (mainnet — any Lightning wallet)
 ```bash
-curl -v http://104.197.109.246:8080/oracle/btcusd
-curl -v http://104.197.109.246:8080/oracle/ethusd
-curl -v http://104.197.109.246:8080/oracle/eurusd
-curl -v http://104.197.109.246:8080/oracle/solusd
+curl -v https://api.myceliasignal.com/oracle/btcusd
+curl -v https://api.myceliasignal.com/oracle/ethusd
+curl -v https://api.myceliasignal.com/oracle/eurusd
+curl -v https://api.myceliasignal.com/oracle/solusd
 ```
 
 You'll get a 402 Payment Required with a Lightning invoice. Pay it with any Lightning wallet, get a cryptographically signed price sourced from major exchanges and central banks.
@@ -37,10 +37,10 @@ The VWAP oracle costs more because it processes full trade history rather than a
 
 | Endpoint | Description |
 |---|---|
-| `http://104.197.109.246:8080/health` | Health check |
-| `http://104.197.109.246:8080/oracle/status` | Oracle status and statistics |
-| `http://104.197.109.246:8080/dlc/oracle/pubkey` | Oracle's persistent Schnorr public key |
-| `http://104.197.109.246:8080/dlc/oracle/announcements` | List upcoming events with nonce commitments |
+| `https://api.myceliasignal.com/health` | Health check |
+| `https://api.myceliasignal.com/oracle/status` | Oracle status and statistics |
+| `https://api.myceliasignal.com/dlc/oracle/pubkey` | Oracle's persistent Schnorr public key |
+| `https://api.myceliasignal.com/dlc/oracle/announcements` | List upcoming events with nonce commitments |
 
 Announcements are free to encourage adoption — the more contracts built against SLO, the more attestation revenue.
 
@@ -53,10 +53,10 @@ SHO delivers the same oracle data over the x402 payment protocol. Instead of Lig
 ### Try It Now (x402)
 ```bash
 # Get oracle info (free)
-curl http://104.197.109.246:8402/sho/info
+curl https://api.myceliasignal.com/sho/info
 
 # Request price data — returns 402 with USDC payment requirements
-curl http://104.197.109.246:8402/oracle/btcusd
+curl https://api.myceliasignal.com/oracle/btcusd
 ```
 
 ### x402-gated endpoints (pay per query in USDC)
@@ -317,10 +317,10 @@ The oracle servers contain zero payment logic. Both proxies enforce "payment bef
 
 SLO is designed to be consumed by machines. The L402 protocol lets AI agents pay for data programmatically — no API keys, no OAuth, no accounts. An agent with a Lightning wallet can:
 ```bash
-lnget -k -q http://104.197.109.246:8080/oracle/btcusd
-lnget -k -q http://104.197.109.246:8080/oracle/ethusd
-lnget -k -q http://104.197.109.246:8080/oracle/eurusd
-lnget -k -q http://104.197.109.246:8080/oracle/solusd
+lnget -k -q https://api.myceliasignal.com/oracle/btcusd
+lnget -k -q https://api.myceliasignal.com/oracle/ethusd
+lnget -k -q https://api.myceliasignal.com/oracle/eurusd
+lnget -k -q https://api.myceliasignal.com/oracle/solusd
 ```
 
 10 sats spent, signed price received, cryptographically verified. This is what machine-payable data looks like.

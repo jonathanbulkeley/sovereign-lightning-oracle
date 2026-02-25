@@ -10,7 +10,7 @@ A step-by-step walkthrough of purchasing signed BTCUSD price data for Lightning 
 
 ## Step 1: Request Price Data
 ```bash
-curl -v http://104.197.109.246:8080/oracle/btcusd
+curl -v https://api.myceliasignal.com/oracle/btcusd
 ```
 
 Response:
@@ -29,7 +29,7 @@ No data is released. Payment first.
 
 ### Option A: lnget (automatic)
 ```bash
-lnget -k http://104.197.109.246:8080/oracle/btcusd
+lnget -k https://api.myceliasignal.com/oracle/btcusd
 ```
 
 lnget handles the full L402 flow — receives the 402, pays the invoice, retries with the token, and prints the response. One command.
@@ -44,7 +44,7 @@ Copy the invoice string (`lnbc100n1p5c...`) from the 402 response and paste it i
 
 After payment, retry the request with the L402 token:
 ```bash
-curl -H "Authorization: L402 <macaroon>:<preimage>" http://104.197.109.246:8080/oracle/btcusd
+curl -H "Authorization: L402 <macaroon>:<preimage>" https://api.myceliasignal.com/oracle/btcusd
 ```
 
 ## Step 3: Receive Signed Data
@@ -100,8 +100,8 @@ If the signature verifies, the oracle committed to this price at this timestamp.
 
 For higher assurance, query both the spot and VWAP oracles and compare:
 ```bash
-lnget -k http://104.197.109.246:8080/oracle/btcusd
-lnget -k http://104.197.109.246:8080/oracle/btcusd/vwap
+lnget -k https://api.myceliasignal.com/oracle/btcusd
+lnget -k https://api.myceliasignal.com/oracle/btcusd/vwap
 ```
 
 Cost: 30 sats total (10 + 20). If both prices are within 0.5% of each other, take the median. If they diverge, something is wrong — don't trust either.
@@ -115,12 +115,12 @@ Output:
 ```
 SLO Quorum Client — backend: lnget
 
-Querying spot at http://104.197.109.246:8080/oracle/btcusd...
+Querying spot at https://api.myceliasignal.com/oracle/btcusd...
   Price: $96482.15
   Signature: VALID
   Pubkey: 0220a2222aae4390e6...
 
-Querying vwap at http://104.197.109.246:8080/oracle/btcusd/vwap...
+Querying vwap at https://api.myceliasignal.com/oracle/btcusd/vwap...
   Price: $96479.88
   Signature: VALID
   Pubkey: 03f1b2c3d4e5f6a7b8...

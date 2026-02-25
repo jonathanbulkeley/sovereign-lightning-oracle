@@ -24,7 +24,7 @@ lnget config init
 # Edit ~/.lnget/config.yaml with your LND credentials
 
 # Fetch signed price data
-lnget -k -q http://104.197.109.246:8080/oracle/btcusd | jq .
+lnget -k -q https://api.myceliasignal.com/oracle/btcusd | jq .
 ```
 
 lnget caches L402 tokens, so repeated requests to the same endpoint reuse the token until it expires.
@@ -47,7 +47,7 @@ def fetch_oracle(url: str) -> dict:
         raise RuntimeError(f"lnget failed: {result.stderr.strip()}")
     return json.loads(result.stdout)
 
-data = fetch_oracle("http://104.197.109.246:8080/oracle/btcusd")
+data = fetch_oracle("https://api.myceliasignal.com/oracle/btcusd")
 print(f"BTCUSD: {data['canonical'].split('|')[2]}")
 ```
 
@@ -61,7 +61,7 @@ import hashlib
 import base64
 from ecdsa import VerifyingKey, SECP256k1
 
-ORACLE_URL = "http://104.197.109.246:8080/oracle/btcusd"
+ORACLE_URL = "https://api.myceliasignal.com/oracle/btcusd"
 
 def fetch_with_l402(url: str, pay_invoice_func) -> dict:
     """
@@ -254,8 +254,8 @@ For production use, query multiple oracles and aggregate:
 import statistics
 
 ORACLES = [
-    "http://104.197.109.246:8080/oracle/btcusd",       # 10 sats
-    "http://104.197.109.246:8080/oracle/btcusd/vwap",   # 20 sats
+    "https://api.myceliasignal.com/oracle/btcusd",       # 10 sats
+    "https://api.myceliasignal.com/oracle/btcusd/vwap",   # 20 sats
     # Add third-party SLO operators here as they come online
 ]
 
@@ -317,10 +317,10 @@ SHO provides the same oracle data via x402 payments. Instead of Lightning, consu
 ### Quick Start
 ```bash
 # Get oracle info (free)
-curl http://104.197.109.246:8402/sho/info
+curl https://api.myceliasignal.com/sho/info
 
 # Request price — returns 402 with payment requirements
-curl http://104.197.109.246:8402/oracle/btcusd
+curl https://api.myceliasignal.com/oracle/btcusd
 ```
 
 ### Python x402 Client
@@ -330,7 +330,7 @@ import hashlib
 import base64
 import requests
 
-SHO_URL = "http://104.197.109.246:8402"
+SHO_URL = "https://api.myceliasignal.com"
 
 def fetch_x402(endpoint: str, tx_hash: str, from_address: str) -> dict:
     """Full x402 flow: request → get nonce → pay USDC → retry with proof."""

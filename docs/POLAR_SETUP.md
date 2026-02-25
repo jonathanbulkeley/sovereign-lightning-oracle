@@ -29,13 +29,13 @@ The client maintains a list of trusted oracles:
 ORACLES = [
     {
         "name": "spot",
-        "url": "http://104.197.109.246:8080/oracle/btcusd",
+        "url": "https://api.myceliasignal.com/oracle/btcusd",
         "pubkey": "0220a2222aae...",   # pin for identity verification
         "weight": 1.0,                  # optional: weight in aggregation
     },
     {
         "name": "vwap",
-        "url": "http://104.197.109.246:8080/oracle/btcusd/vwap",
+        "url": "https://api.myceliasignal.com/oracle/btcusd/vwap",
         "pubkey": "03f1b2c3d4e5...",
         "weight": 1.0,
     },
