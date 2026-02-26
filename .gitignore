@@ -3,3 +3,4 @@ dlc/data/
 sho/keys/
 oracle/keys/*.key
 __pycache__/
+l402-proxy/slo-l402-proxy

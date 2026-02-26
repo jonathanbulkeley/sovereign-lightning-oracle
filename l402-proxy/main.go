@@ -45,6 +45,7 @@ var freeRoutes = map[string]string{
 	"/dlc/oracle/pubkey":         "http://127.0.0.1:9104",
 	"/dlc/oracle/announcements":  "http://127.0.0.1:9104",
 	"/dlc/oracle/status":         "http://127.0.0.1:9104",
+	"/sho/info":                  "http://127.0.0.1:8402",
 }
 
 // Prefix routes: paid endpoints with path prefix matching
@@ -138,6 +139,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	if backend, ok := freeRoutes[path]; ok {
 		proxyTo(backend, w, r)
+		return
+	}
+
+	// SHO enforcement — free prefix route to x402 proxy
+	if strings.HasPrefix(path, "/sho/enforcement/") {
+		proxyTo("http://127.0.0.1:8402", w, r)
+		return
+	}
+
+	// SHO catch-all — strip /sho prefix, forward to x402 proxy
+	if strings.HasPrefix(path, "/sho/") {
+		r.URL.Path = strings.TrimPrefix(path, "/sho")
+		proxyTo("http://127.0.0.1:8402", w, r)
 		return
 	}
 
