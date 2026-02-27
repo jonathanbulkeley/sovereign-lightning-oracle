@@ -45,7 +45,6 @@ var freeRoutes = map[string]string{
 	"/dlc/oracle/pubkey":         "http://127.0.0.1:9104",
 	"/dlc/oracle/announcements":  "http://127.0.0.1:9104",
 	"/dlc/oracle/status":         "http://127.0.0.1:9104",
-	"/sho/info":                  "http://127.0.0.1:8402",
 }
 
 // Prefix routes: paid endpoints with path prefix matching
@@ -98,6 +97,32 @@ func mintMacaroon(paymentHash []byte) (*macaroon.Macaroon, error) {
 	return mac, nil
 }
 
+// checkInvoicePaid queries LND to verify the invoice has been settled
+func checkInvoicePaid(paymentHash []byte) bool {
+	rHashHex := hex.EncodeToString(paymentHash)
+	reqURL := fmt.Sprintf("%s/v1/invoice/%s", lndREST, rHashHex)
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("Grpc-Metadata-macaroon", macaroonHex)
+
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{},
+	}}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("LND invoice lookup error: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	settled, _ := result["settled"].(bool)
+	state, _ := result["state"].(string)
+	log.Printf("Invoice check: rHash=%s settled=%v state=%s", rHashHex, settled, state)
+	return settled || state == "SETTLED"
+}
+
 func verifyL402(authHeader string) bool {
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 {
@@ -123,7 +148,20 @@ func verifyL402(authHeader string) bool {
 		log.Printf("Auth: verify error: %v", err)
 		return false
 	}
-	log.Printf("Auth: verified OK")
+	// Extract payment hash from macaroon ID and verify invoice is paid
+	macID := mac.Id()
+	if len(macID) < 34 {
+		log.Printf("Auth: macaroon ID too short (%d bytes)", len(macID))
+		return false
+	}
+	paymentHash := macID[2:34]
+
+	if !checkInvoicePaid(paymentHash) {
+		log.Printf("Auth: macaroon valid but invoice NOT paid")
+		return false
+	}
+
+	log.Printf("Auth: verified OK (macaroon + payment confirmed)")
 	return true
 }
 
@@ -139,19 +177,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	if backend, ok := freeRoutes[path]; ok {
 		proxyTo(backend, w, r)
-		return
-	}
-
-	// SHO enforcement — free prefix route to x402 proxy
-	if strings.HasPrefix(path, "/sho/enforcement/") {
-		proxyTo("http://127.0.0.1:8402", w, r)
-		return
-	}
-
-	// SHO catch-all — strip /sho prefix, forward to x402 proxy
-	if strings.HasPrefix(path, "/sho/") {
-		r.URL.Path = strings.TrimPrefix(path, "/sho")
-		proxyTo("http://127.0.0.1:8402", w, r)
 		return
 	}
 
@@ -177,7 +202,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			proxyTo(route.Backend, w, r)
 			return
 		}
-		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		http.Error(w, `{"error":"invalid token or unpaid invoice"}`, http.StatusPaymentRequired)
 		return
 	}
 

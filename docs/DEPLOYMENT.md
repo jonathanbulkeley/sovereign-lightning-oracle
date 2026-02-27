@@ -174,32 +174,74 @@ sudo tee /etc/nginx/sites-available/mycelia-api << 'EOF'
 server {
     listen 80;
     server_name api.myceliasignal.com;
-    # x402 endpoints — strip /sho/ prefix before proxying
+
+    location = /sho/info {
+        add_header Access-Control-Allow-Origin "https://myceliasignal.com" always;
+        add_header Access-Control-Allow-Headers "X-Payment, Accept, Content-Type" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        if ($request_method = OPTIONS) { return 204; }
+        proxy_pass http://127.0.0.1:8402/sho/info;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /sho/enforcement/ {
+        add_header Access-Control-Allow-Origin "https://myceliasignal.com" always;
+        add_header Access-Control-Allow-Headers "X-Payment, Accept, Content-Type" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        if ($request_method = OPTIONS) { return 204; }
+        proxy_pass http://127.0.0.1:8402/sho/enforcement/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
     location /sho/ {
+        add_header Access-Control-Allow-Origin "https://myceliasignal.com" always;
+        add_header Access-Control-Allow-Headers "X-Payment, X-Payment-Token, X-Payment-Chain, Accept, Content-Type" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Access-Control-Expose-Headers "WWW-Authenticate" always;
+        if ($request_method = OPTIONS) { return 204; }
         proxy_pass http://127.0.0.1:8402/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Payment $http_x_payment;
     }
+
     location /x402/ {
+        add_header Access-Control-Allow-Origin "https://myceliasignal.com" always;
+        add_header Access-Control-Allow-Headers "X-Payment, X-Payment-Token, X-Payment-Chain, Accept, Content-Type" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Access-Control-Expose-Headers "WWW-Authenticate" always;
+        if ($request_method = OPTIONS) { return 204; }
         rewrite ^/x402/(.*) /$1 break;
         proxy_pass http://127.0.0.1:8402;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Payment $http_x_payment;
     }
-    # L402 endpoints (default)
+
     location /oracle/ {
+        add_header Access-Control-Allow-Origin "https://myceliasignal.com" always;
+        add_header Access-Control-Allow-Headers "Authorization, Accept, Content-Type" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Access-Control-Expose-Headers "WWW-Authenticate" always;
+        if ($request_method = OPTIONS) { return 204; }
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Authorization $http_authorization;
     }
+
     location /health {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
     }
+
     location /dlc/ {
+        add_header Access-Control-Allow-Origin "https://myceliasignal.com" always;
+        add_header Access-Control-Allow-Headers "Authorization, Accept, Content-Type" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        if ($request_method = OPTIONS) { return 204; }
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -212,7 +254,7 @@ sudo ln -sf /etc/nginx/sites-available/mycelia-api /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**Important:** The `/sho/` location uses `proxy_pass http://127.0.0.1:8402/;` with a trailing slash. This tells nginx to strip the `/sho/` prefix before proxying, so `/sho/oracle/btcusd` reaches the x402 proxy as `/oracle/btcusd`.
+**Important:** The nginx config uses three `/sho` location blocks: an exact match for `/sho/info` (passes path through), a prefix match for `/sho/enforcement/` (same), and a catch-all `/sho/` with a trailing slash on `proxy_pass` that strips the prefix so `/sho/oracle/btcusd` reaches the x402 proxy as `/oracle/btcusd`. CORS headers allow the demo page on `myceliasignal.com` to call `api.myceliasignal.com`.
 
 ### Cloudflare Setup
 
@@ -323,6 +365,9 @@ After=network.target
 [Service]
 Type=simple
 User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/slo/repo/sho
+Environment=SHO_PAYMENT_ADDRESS=0xYOUR_USDC_ADDRESS_ON_BASE
+Environment=BASE_RPC_URL=https://mainnet.base.org
 ExecStart=/usr/bin/python3 /home/YOUR_USER/slo/repo/sho/x402_proxy.py
 Restart=always
 RestartSec=5
@@ -347,7 +392,7 @@ sudo systemctl start sho-x402-proxy
 | Oracle returning 500 | Exchange API may be down; check oracle logs |
 | Proxy not forwarding | Verify oracle backend is running on expected port |
 | `go build` fails | Run `go mod tidy` then rebuild |
-| x402 `/sho/oracle/*` returning 404 | Check nginx config has trailing `/` on `proxy_pass` for `/sho/` location |
+| x402 `/sho/info` returning 404 | Ensure `location = /sho/info` exact match block exists above the catch-all `/sho/` block |
 | lnget getting 400 from Cloudflare | Go TLS fingerprint issue — use direct IP or custom TLS profile |
 | x402 returning 503 | Depeg circuit breaker active — check USDC/USD peg status |
 
