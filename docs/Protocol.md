@@ -254,9 +254,27 @@ SHO extends the protocol with x402 payment support, accepting USDC on Base. The 
 ```
 
 ### 402 Response
+
+The SHO returns a standard x402-compliant 402 response with both a `Payment-Required` HTTP header (base64-encoded) and a JSON body. This is compatible with standard x402 client SDKs (`@x402/fetch`, `@x402/axios`), x402scan, and the Coinbase facilitator.
+
+**Response body:**
 ```json
 {
-  "error": "payment_required",
+  "x402Version": 1,
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "maxAmountRequired": "1000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+      "resource": "https://api.myceliasignal.com/oracle/btcusd",
+      "mimeType": "application/json",
+      "description": "Signed price attestation",
+      "maxTimeoutSeconds": 300
+    }
+  ],
+  "error": "X-PAYMENT header is required",
   "x402": {
     "version": "1",
     "chain": "base",
@@ -270,6 +288,14 @@ SHO extends the protocol with x402 payment support, accepting USDC on Base. The 
 }
 ```
 
+**Response headers:**
+```
+HTTP/1.1 402 Payment Required
+Payment-Required: <base64-encoded accepts array>
+Content-Type: application/json
+```
+
+The `accepts` array follows the standard x402 PaymentRequirements schema. The `x402` object is retained for backward compatibility with existing Mycelia Signal clients. `maxAmountRequired` is in USDC atomic units (6 decimals): `1000` = $0.001.
 ### Authenticated Retry
 
 After sending USDC on Base, the client retries with an `X-Payment` header:

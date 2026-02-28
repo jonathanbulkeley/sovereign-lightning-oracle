@@ -345,7 +345,10 @@ def fetch_x402(pair: str, tx_hash: str, from_address: str) -> dict:
     if r.status_code != 402:
         return r.json()
     challenge = r.json()
+    # Standard x402 format — nonce is in the legacy x402 object
     nonce = challenge["x402"]["nonce"]
+    # Note: The 402 response also includes a standard x402 "accepts" array
+    # compatible with @x402/fetch, @x402/axios, and x402scan.
 
     # Step 2: Send USDC on Base (done externally — you provide the tx_hash)
 

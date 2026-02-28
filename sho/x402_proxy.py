@@ -490,8 +490,21 @@ async def main_handler(request: Request, path: str):
     if not x402_header:
         # No payment — return 402 with payment requirements
         nonce = create_nonce()
-        return JSONResponse({
-            "error": "payment_required",
+        payment_body = {
+            "x402Version": 1,
+            "accepts": [{
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "maxAmountRequired": str(int(float(route["price_usd"]) * 1_000_000)),
+                "asset": USDC_CONTRACT,
+                "payTo": PAYMENT_ADDRESS,
+                "resource": f"https://api.myceliasignal.com{request.url.path}",
+                "mimeType": "application/json",
+                "description": "Signed price attestation",
+                "outputSchema": {"input": {"type": "http", "method": "GET", "url": f"https://api.myceliasignal.com{request.url.path}"}, "output": {"type": "object", "description": "Signed price attestation with canonical verification string"}},
+                "maxTimeoutSeconds": NONCE_TTL_SECONDS,
+            }],
+            "error": "X-PAYMENT header is required",
             "x402": {
                 "version": "1",
                 "chain": "base",
@@ -502,7 +515,27 @@ async def main_handler(request: Request, path: str):
                 "nonce": nonce,
                 "expires_in": NONCE_TTL_SECONDS,
             }
-        }, status_code=402)
+        }
+        payment_header_value = base64.b64encode(json.dumps({
+            "x402Version": 1,
+            "accepts": [{
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "maxAmountRequired": str(int(float(route["price_usd"]) * 1_000_000)),
+                "asset": USDC_CONTRACT,
+                "payTo": PAYMENT_ADDRESS,
+                "resource": f"https://api.myceliasignal.com{request.url.path}",
+                "mimeType": "application/json",
+                "description": "Signed price attestation",
+                "outputSchema": {"input": {"type": "http", "method": "GET", "url": f"https://api.myceliasignal.com{request.url.path}"}, "output": {"type": "object", "description": "Signed price attestation with canonical verification string"}},
+                "maxTimeoutSeconds": NONCE_TTL_SECONDS,
+            }]
+        }).encode()).decode()
+        return JSONResponse(
+            payment_body,
+            status_code=402,
+            headers={"Payment-Required": payment_header_value}
+        )
 
     # ── Parse x402 payment header ──
     try:
