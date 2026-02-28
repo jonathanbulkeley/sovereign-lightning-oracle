@@ -1,7 +1,18 @@
-dlc/keys/
-dlc/data/
-sho/keys/
+# Private keys
 oracle/keys/*.key
+sho/keys/
+dlc/keys/
+
+# Data
+dlc/data/
+
+# Python
 __pycache__/
-l402-proxy/slo-l402-proxy
 sho/venv/
+
+# Compiled binaries
+l402-proxy/slo-l402-proxy
+
+# Backups and temp files
+*.bak*
+update_docs.sh
