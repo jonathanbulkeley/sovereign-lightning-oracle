@@ -1,0 +1,66 @@
+{
+  "x402Version": 1,
+  "endpoints": [
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/btcusd",
+      "description": "BTC/USD signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.001",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    },
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/ethusd",
+      "description": "ETH/USD signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.001",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    },
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/solusd",
+      "description": "SOL/USD signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.001",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    },
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/eurusd",
+      "description": "EUR/USD signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.001",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    },
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/xauusd",
+      "description": "XAU/USD signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.001",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    },
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/btceur",
+      "description": "BTC/EUR signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.001",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    },
+    {
+      "resource": "https://api.myceliasignal.com/sho/oracle/btcusd/vwap",
+      "description": "BTC/USD VWAP signed price attestation",
+      "mimeType": "application/json",
+      "price": "0.002",
+      "currency": "USDC",
+      "network": "eip155:8453"
+    }
+  ],
+  "provider": {
+    "name": "Mycelia Signal",
+    "url": "https://myceliasignal.com",
+    "github": "https://github.com/jonathanbulkeley/sovereign-lightning-oracle"
+  }
+}
