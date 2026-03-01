@@ -30,7 +30,7 @@ L402_BASE = "http://104.197.109.246:8080"
 # x402 / SHO proxy (USDC payments on Base)
 # NOTE: Uses direct IP to bypass Cloudflare, same pattern as L402.
 # x402 proxy runs directly on :8402.
-SHO_BASE = "http://127.0.0.1:8402"
+SHO_BASE = "http://104.197.109.246:8402"
 
 # Oracle endpoints (routed by nginx — same backends, different payment rail)
 L402_ORACLE_URLS = {
