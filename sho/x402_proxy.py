@@ -452,12 +452,12 @@ async def verify_and_settle_payment(
 # FastAPI Application
 # ══════════════════════════════════════════════════════════════════════════════
 
-app = FastAPI(title="SHO — Sovereign HTTP Oracle", version="0.2.0")
+app = FastAPI(title="SHO — Sovereign HTTP Oracle", version="0.2.1")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "protocol": "x402", "version": "0.2.0"}
+    return {"status": "ok", "protocol": "x402", "version": "0.2.1"}
 
 
 @app.get("/sho/info")
@@ -466,7 +466,7 @@ async def sho_info():
     depeg = await check_depeg()
     return {
         "protocol": "x402",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "x402Version": 1,
         "signing_scheme": "ed25519",
         "pubkey": ED25519_PK.encode(HexEncoder).decode(),
@@ -616,7 +616,7 @@ async def main_handler(request: Request, path: str):
 
 @app.on_event("startup")
 async def startup():
-    log.info(f"SHO x402 Proxy v0.2.0 starting on :{SHO_PORT}")
+    log.info(f"SHO x402 Proxy v0.2.1 starting on :{SHO_PORT}")
     log.info(f"Ed25519 pubkey: {ED25519_PK.encode(HexEncoder).decode()}")
     log.info(f"Payment address: {PAYMENT_ADDRESS}")
     log.info(f"Network: {X402_NETWORK}")
