@@ -1,61 +1,104 @@
 {
   "x402Version": 1,
+  "facilitator": "https://api.cdp.coinbase.com/platform/v2/x402",
   "endpoints": [
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/btcusd",
-      "description": "BTC/USD signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.001",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/btcusd",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "1000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "BTC/USD spot price — Ed25519-signed attestation",
+      "mimeType": "application/json"
     },
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/ethusd",
-      "description": "ETH/USD signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.001",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/btcusd/vwap",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "2000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "BTC/USD VWAP — Ed25519-signed attestation",
+      "mimeType": "application/json"
     },
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/solusd",
-      "description": "SOL/USD signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.001",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/ethusd",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "1000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "ETH/USD spot price — Ed25519-signed attestation",
+      "mimeType": "application/json"
     },
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/eurusd",
-      "description": "EUR/USD signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.001",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/eurusd",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "1000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "EUR/USD spot price — Ed25519-signed attestation",
+      "mimeType": "application/json"
     },
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/xauusd",
-      "description": "XAU/USD signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.001",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/xauusd",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "1000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "XAU/USD spot price — Ed25519-signed attestation",
+      "mimeType": "application/json"
     },
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/btceur",
-      "description": "BTC/EUR signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.001",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/btceur",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "1000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "BTC/EUR spot price — Ed25519-signed attestation",
+      "mimeType": "application/json"
     },
     {
-      "resource": "https://api.myceliasignal.com/sho/oracle/btcusd/vwap",
-      "description": "BTC/USD VWAP signed price attestation",
-      "mimeType": "application/json",
-      "price": "0.002",
-      "currency": "USDC",
-      "network": "eip155:8453"
+      "resource": "https://api.myceliasignal.com/oracle/solusd",
+      "accepts": [{
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "maxAmountRequired": "1000",
+        "payTo": "0xD593832Ce9C2B13B192ba50B55dd9AF44e96700d",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "maxTimeoutSeconds": 60,
+        "extra": {"name": "USD Coin", "version": "2"}
+      }],
+      "description": "SOL/USD spot price — Ed25519-signed attestation",
+      "mimeType": "application/json"
     }
   ],
   "provider": {

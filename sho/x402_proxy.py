@@ -1,17 +1,24 @@
 # sho/x402_proxy.py
 """
 SHO — Sovereign HTTP Oracle x402 Proxy
-Phase 1 MVP
+Standard x402 Protocol Implementation
 
 x402-compatible payment proxy for the Sovereign Lightning Oracle.
-Sits alongside the L402 proxy, routing to the same oracle backends.
-Handles USDC payment verification on Base, Ed25519 re-signing,
-optimistic delivery, and tiered enforcement for failed payments.
+Uses the standard x402 payment flow with the Coinbase CDP facilitator
+for EIP-3009 payment verification and settlement on Base.
+
+Flow:
+  1. Client → GET /oracle/btcusd (no X-PAYMENT header)
+  2. Server → 402 + PaymentRequirements (standard x402 body + PAYMENT-REQUIRED header)
+  3. Client signs EIP-3009 transferWithAuthorization (EIP-712)
+  4. Client → GET /oracle/btcusd + X-PAYMENT: <base64 PaymentPayload>
+  5. Server → CDP facilitator /verify + /settle
+  6. Server → 200 + attestation + X-PAYMENT-RESPONSE header
 
 Architecture:
   Consumer → SHO x402 Proxy (:8402) → Oracle Backend (:9100-9107)
                                     ↕
-                              Base RPC (USDC verification)
+                              CDP Facilitator (verify + settle)
 """
 
 import hashlib
@@ -21,37 +28,55 @@ import time
 import base64
 import secrets
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import jwt as pyjwt
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from nacl.signing import SigningKey, VerifyKey
+from nacl.signing import SigningKey
 from nacl.encoding import HexEncoder
+
+from x402.http import HTTPFacilitatorClient
+from x402 import (
+    PaymentRequirementsV1,
+    parse_payment_payload,
+    VerifyResponse,
+    SettleResponse,
+)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 BASE_RPC_URL = os.environ.get("BASE_RPC_URL", "https://mainnet.base.org")
-USDC_CONTRACT = os.environ.get("USDC_CONTRACT", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")  # USDC on Base
-PAYMENT_ADDRESS = os.environ.get("SHO_PAYMENT_ADDRESS", "")  # Oracle's USDC receiving address on Base
+USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
+PAYMENT_ADDRESS = os.environ.get("SHO_PAYMENT_ADDRESS", "")
 DEPEG_THRESHOLD = float(os.environ.get("DEPEG_THRESHOLD", "0.02"))  # 2%
 
 SHO_PORT = int(os.environ.get("SHO_PORT", "8402"))
 KEYS_DIR = Path(os.environ.get("SHO_KEYS_DIR", str(Path(__file__).parent / "keys")))
 
-# ── Oracle Backend Routes (same backends as L402 proxy) ───────────────────────
+# CDP Facilitator
+CDP_API_KEY_ID = os.environ.get("CDP_API_KEY_ID", "")
+CDP_API_KEY_SECRET = os.environ.get("CDP_API_KEY_SECRET", "")
+CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402"
+
+# x402 protocol constants
+X402_NETWORK = "eip155:8453"  # Base mainnet (CAIP-2)
+X402_SCHEME = "exact"
+USDC_DECIMALS = 6
+
+# ── Oracle Backend Routes ─────────────────────────────────────────────────────
 
 ROUTES = {
-    "/oracle/btcusd":      {"backend": "http://127.0.0.1:9100/oracle/btcusd",      "price_usd": 0.001},
-    "/oracle/btcusd/vwap":  {"backend": "http://127.0.0.1:9101/oracle/btcusd/vwap", "price_usd": 0.002},
-    "/oracle/ethusd":      {"backend": "http://127.0.0.1:9102/oracle/ethusd",      "price_usd": 0.001},
-    "/oracle/eurusd":      {"backend": "http://127.0.0.1:9103/oracle/eurusd",      "price_usd": 0.001},
-    "/oracle/xauusd":      {"backend": "http://127.0.0.1:9105/oracle/xauusd",      "price_usd": 0.001},
-    "/oracle/btceur":      {"backend": "http://127.0.0.1:9106/oracle/btceur",      "price_usd": 0.001},
-    "/oracle/solusd":      {"backend": "http://127.0.0.1:9107/oracle/solusd",      "price_usd": 0.001},
+    "/oracle/btcusd":      {"backend": "http://127.0.0.1:9100/oracle/btcusd",      "price_usd": 0.001, "description": "BTC/USD spot price — Ed25519-signed attestation"},
+    "/oracle/btcusd/vwap": {"backend": "http://127.0.0.1:9101/oracle/btcusd/vwap",  "price_usd": 0.002, "description": "BTC/USD VWAP — Ed25519-signed attestation"},
+    "/oracle/ethusd":      {"backend": "http://127.0.0.1:9102/oracle/ethusd",      "price_usd": 0.001, "description": "ETH/USD spot price — Ed25519-signed attestation"},
+    "/oracle/eurusd":      {"backend": "http://127.0.0.1:9103/oracle/eurusd",      "price_usd": 0.001, "description": "EUR/USD spot price — Ed25519-signed attestation"},
+    "/oracle/xauusd":      {"backend": "http://127.0.0.1:9105/oracle/xauusd",      "price_usd": 0.001, "description": "XAU/USD spot price — Ed25519-signed attestation"},
+    "/oracle/btceur":      {"backend": "http://127.0.0.1:9106/oracle/btceur",      "price_usd": 0.001, "description": "BTC/EUR spot price — Ed25519-signed attestation"},
+    "/oracle/solusd":      {"backend": "http://127.0.0.1:9107/oracle/solusd",      "price_usd": 0.001, "description": "SOL/USD spot price — Ed25519-signed attestation"},
 }
 
 FREE_ROUTES = {
@@ -63,6 +88,105 @@ FREE_ROUTES = {
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SHO] %(message)s")
 log = logging.getLogger("sho")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CDP JWT Authentication
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _load_cdp_signing_key():
+    """
+    Load the CDP signing key. CDP secrets are either:
+    - Ed25519: base64-encoded 64 bytes (32-byte seed + 32-byte pubkey)
+    - EC (ES256): PEM-encoded private key
+    Returns (key_object, algorithm) for PyJWT.
+    """
+    secret = CDP_API_KEY_SECRET
+    if not secret:
+        return None, None
+
+    if secret.startswith("-----BEGIN EC PRIVATE KEY-----"):
+        # ES256 PEM key — PyJWT accepts this directly
+        return secret, "ES256"
+    else:
+        # Ed25519 key — base64-encoded, 64 bytes (seed + pubkey)
+        # PyJWT EdDSA expects an Ed25519PrivateKey object from cryptography
+        import base64 as b64
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        decoded = b64.b64decode(secret)
+        if len(decoded) == 64:
+            # First 32 bytes are the seed (private key)
+            seed = decoded[:32]
+        elif len(decoded) == 32:
+            seed = decoded
+        else:
+            raise ValueError(f"CDP Ed25519 key: unexpected length {len(decoded)}, expected 32 or 64")
+
+        private_key = Ed25519PrivateKey.from_private_bytes(seed)
+        return private_key, "EdDSA"
+
+
+# Pre-load the signing key at module level
+_CDP_SIGNING_KEY, _CDP_ALGORITHM = _load_cdp_signing_key()
+
+
+def create_cdp_jwt(method: str, path: str) -> str:
+    """
+    Generate a CDP JWT for authenticating with the Coinbase facilitator.
+    Follows the exact format from Coinbase's JWT authentication docs.
+    """
+    if not _CDP_SIGNING_KEY:
+        raise RuntimeError("CDP signing key not configured")
+
+    now = int(time.time())
+    uri = f"{method} api.cdp.coinbase.com{path}"
+
+    payload = {
+        "sub": CDP_API_KEY_ID,
+        "iss": "cdp",
+        "aud": ["cdp_service"],
+        "nbf": now,
+        "exp": now + 120,  # 2 minute expiry
+        "uris": [uri],
+    }
+
+    headers = {
+        "kid": CDP_API_KEY_ID,
+        "typ": "JWT",
+        "nonce": secrets.token_hex(16),
+    }
+
+    token = pyjwt.encode(payload, _CDP_SIGNING_KEY, algorithm=_CDP_ALGORITHM, headers=headers)
+    return token
+
+
+def create_cdp_auth_headers() -> dict[str, dict[str, str]]:
+    """
+    Create auth headers for CDP facilitator calls.
+
+    The x402 SDK expects create_headers to return a nested dict:
+      {"verify": {headers}, "settle": {headers}}
+    Each with a JWT scoped to the specific endpoint path.
+    """
+    verify_jwt = create_cdp_jwt("POST", "/platform/v2/x402/verify")
+    settle_jwt = create_cdp_jwt("POST", "/platform/v2/x402/settle")
+    return {
+        "verify": {"Authorization": f"Bearer {verify_jwt}"},
+        "settle": {"Authorization": f"Bearer {settle_jwt}"},
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# x402 Facilitator Client
+# ══════════════════════════════════════════════════════════════════════════════
+
+facilitator_config = {
+    "url": CDP_FACILITATOR_URL,
+    "create_headers": create_cdp_auth_headers,
+}
+
+facilitator_client = HTTPFacilitatorClient(config=facilitator_config)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -99,113 +223,63 @@ def ed25519_sign(canonical: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Base USDC Payment Verification
+# Payment Requirements Builder
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ERC-20 Transfer event signature: Transfer(address,address,uint256)
-TRANSFER_EVENT_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+def build_payment_requirements(route_path: str, route: dict) -> dict:
+    """Build a standard x402 PaymentRequirements object for an endpoint."""
+    amount_atomic = str(int(route["price_usd"] * (10 ** USDC_DECIMALS)))
+    return {
+        "scheme": X402_SCHEME,
+        "network": X402_NETWORK,
+        "maxAmountRequired": amount_atomic,
+        "resource": f"https://api.myceliasignal.com{route_path}",
+        "description": route["description"],
+        "mimeType": "application/json",
+        "outputSchema": None,
+        "payTo": PAYMENT_ADDRESS,
+        "maxTimeoutSeconds": 60,
+        "asset": USDC_CONTRACT,
+        "extra": {
+            "name": "USD Coin",
+            "version": "2"
+        }
+    }
 
-# USDC has 6 decimals
-USDC_DECIMALS = 6
 
-
-async def verify_usdc_transfer(tx_hash: str, expected_amount_usd: float) -> dict:
+def build_402_response(requirements: dict) -> tuple[dict, dict]:
     """
-    Verify a USDC transfer on Base.
-    Returns: {"valid": bool, "confirmed": bool, "error": str|None}
+    Build the standard 402 response body and headers.
+    Body: JSON with x402Version, accepts array, and error message.
+    Header: PAYMENT-REQUIRED with base64-encoded requirements.
     """
-    expected_amount_raw = int(expected_amount_usd * (10 ** USDC_DECIMALS))
+    body = {
+        "x402Version": 1,
+        "accepts": [requirements],
+        "error": "X-PAYMENT header is required",
+    }
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        # Get transaction receipt
-        resp = await client.post(BASE_RPC_URL, json={
-            "jsonrpc": "2.0",
-            "method": "eth_getTransactionReceipt",
-            "params": [tx_hash],
-            "id": 1,
-        })
-        data = resp.json()
+    # PAYMENT-REQUIRED header: base64-encoded JSON of the accepts array wrapper
+    header_payload = {
+        "x402Version": 1,
+        "accepts": [requirements],
+    }
+    payment_required_header = base64.b64encode(
+        json.dumps(header_payload).encode()
+    ).decode()
 
-        if "error" in data:
-            return {"valid": False, "confirmed": False, "error": data["error"]["message"]}
+    headers = {
+        "PAYMENT-REQUIRED": payment_required_header,
+    }
 
-        receipt = data.get("result")
-        if receipt is None:
-            # Transaction pending — not yet mined
-            # For optimistic delivery, also check the raw transaction
-            return await _verify_pending_tx(client, tx_hash, expected_amount_raw)
-
-        # Transaction mined — check status
-        if receipt["status"] != "0x1":
-            return {"valid": False, "confirmed": True, "error": "transaction_reverted"}
-
-        # Check logs for USDC Transfer event
-        for log_entry in receipt.get("logs", []):
-            if (log_entry["address"].lower() == USDC_CONTRACT.lower()
-                    and len(log_entry["topics"]) >= 3
-                    and log_entry["topics"][0] == TRANSFER_EVENT_TOPIC):
-
-                # Decode recipient (topic[2]) — 32-byte padded address
-                recipient = "0x" + log_entry["topics"][2][-40:]
-                if recipient.lower() != PAYMENT_ADDRESS.lower():
-                    continue
-
-                # Decode amount from data
-                amount_hex = log_entry["data"]
-                amount = int(amount_hex, 16)
-
-                if amount >= expected_amount_raw:
-                    return {"valid": True, "confirmed": True, "error": None}
-                else:
-                    return {"valid": False, "confirmed": True, "error": "insufficient_amount"}
-
-        return {"valid": False, "confirmed": True, "error": "no_usdc_transfer_found"}
-
-
-async def _verify_pending_tx(client: httpx.AsyncClient, tx_hash: str, expected_amount_raw: int) -> dict:
-    """Check a pending (unconfirmed) transaction for optimistic delivery."""
-    resp = await client.post(BASE_RPC_URL, json={
-        "jsonrpc": "2.0",
-        "method": "eth_getTransactionByHash",
-        "params": [tx_hash],
-        "id": 1,
-    })
-    data = resp.json()
-    tx = data.get("result")
-
-    if tx is None:
-        return {"valid": False, "confirmed": False, "error": "transaction_not_found"}
-
-    # Check it's a call to the USDC contract
-    if tx.get("to", "").lower() != USDC_CONTRACT.lower():
-        return {"valid": False, "confirmed": False, "error": "not_usdc_contract"}
-
-    # Decode ERC-20 transfer calldata: transfer(address,uint256)
-    # Function selector: 0xa9059cbb
-    input_data = tx.get("input", "")
-    if not input_data.startswith("0xa9059cbb"):
-        return {"valid": False, "confirmed": False, "error": "not_transfer_call"}
-
-    # Decode recipient (bytes 4-36) and amount (bytes 36-68)
-    recipient = "0x" + input_data[34:74]
-    amount = int(input_data[74:138], 16)
-
-    if recipient.lower() != PAYMENT_ADDRESS.lower():
-        return {"valid": False, "confirmed": False, "error": "wrong_recipient"}
-
-    if amount < expected_amount_raw:
-        return {"valid": False, "confirmed": False, "error": "insufficient_amount"}
-
-    # Pending but looks valid — optimistic delivery
-    return {"valid": True, "confirmed": False, "error": None}
+    return body, headers
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Tiered Enforcement
 # ══════════════════════════════════════════════════════════════════════════════
 
-# In-memory enforcement state (production: use Redis or SQLite)
-# Key: payment_address (lowercase), Value: list of failure timestamps
+# In-memory enforcement state
 _failure_log: dict[str, list[float]] = {}
 _hard_blocked: set[str] = set()
 
@@ -215,33 +289,25 @@ HARD_BLOCK_WINDOW_SECONDS = 604800  # 7 days
 
 
 def check_enforcement(payment_address: str) -> dict:
-    """
-    Check if a payment address is blocked or in cooldown.
-    Returns: {"allowed": bool, "reason": str|None, "tier": int}
-    """
+    """Check if a payment address is blocked or in cooldown."""
     addr = payment_address.lower()
 
-    # Tier 3: Hard block
     if addr in _hard_blocked:
         return {"allowed": False, "reason": "hard_blocked", "tier": 3}
 
-    # Clean old entries outside rolling window
     now = time.time()
     if addr in _failure_log:
         _failure_log[addr] = [
             t for t in _failure_log[addr]
             if now - t < HARD_BLOCK_WINDOW_SECONDS
         ]
-
         failures = _failure_log[addr]
 
-        # Check hard block threshold
         if len(failures) >= HARD_BLOCK_THRESHOLD:
             _hard_blocked.add(addr)
             log.warning(f"HARD BLOCK: {addr} ({len(failures)} failures in 7d)")
             return {"allowed": False, "reason": "hard_blocked", "tier": 3}
 
-        # Tier 1: Grace cooldown
         if failures and (now - failures[-1]) < GRACE_COOLDOWN_SECONDS:
             remaining = int(GRACE_COOLDOWN_SECONDS - (now - failures[-1]))
             return {"allowed": False, "reason": f"cooldown_{remaining}s", "tier": 1}
@@ -259,8 +325,7 @@ def record_failure(payment_address: str):
 
 
 def record_success(payment_address: str):
-    """Record a successful payment (clears cooldown timer effectively)."""
-    # We don't clear history — just let the rolling window expire naturally
+    """Record a successful payment."""
     pass
 
 
@@ -270,14 +335,11 @@ def record_success(payment_address: str):
 
 _depeg_active = False
 _last_depeg_check = 0.0
-DEPEG_CHECK_INTERVAL = 60  # seconds
+DEPEG_CHECK_INTERVAL = 60
 
 
 async def check_depeg() -> dict:
-    """
-    Check USDC/USD peg using 5 exchange sources (median, minimum 2 required).
-    Returns: {"pegged": bool, "rate": float|None, "sources": int}
-    """
+    """Check USDC/USD peg using multiple exchange sources."""
     global _depeg_active, _last_depeg_check
 
     now = time.time()
@@ -290,7 +352,6 @@ async def check_depeg() -> dict:
         async with httpx.AsyncClient(timeout=5) as client:
             rates = []
 
-            # 1. Kraken USDC/USD
             try:
                 r = await client.get("https://api.kraken.com/0/public/Ticker?pair=USDCUSD")
                 d = r.json()
@@ -298,28 +359,24 @@ async def check_depeg() -> dict:
             except Exception:
                 pass
 
-            # 2. Bitstamp USDC/USD
             try:
                 r = await client.get("https://www.bitstamp.net/api/v2/ticker/usdcusd/")
                 rates.append(float(r.json()["last"]))
             except Exception:
                 pass
 
-            # 3. Coinbase USDC/USD
             try:
                 r = await client.get("https://api.exchange.coinbase.com/products/USDC-USD/ticker")
                 rates.append(float(r.json()["price"]))
             except Exception:
                 pass
 
-            # 4. Gemini USDC/USD
             try:
                 r = await client.get("https://api.gemini.com/v1/pubticker/usdcusd")
                 rates.append(float(r.json()["last"]))
             except Exception:
                 pass
 
-            # 5. Bitfinex USDC/USD
             try:
                 r = await client.get("https://api-pub.bitfinex.com/v2/ticker/tUDCUSD")
                 rates.append(float(r.json()[6]))
@@ -327,7 +384,6 @@ async def check_depeg() -> dict:
                 pass
 
             if len(rates) < 2:
-                # Insufficient sources — fail safe, keep current state
                 log.warning(f"Depeg check: only {len(rates)} sources available, need 2")
                 return {"pegged": not _depeg_active, "rate": None, "sources": len(rates)}
 
@@ -337,7 +393,7 @@ async def check_depeg() -> dict:
 
             if deviation > DEPEG_THRESHOLD:
                 if not _depeg_active:
-                    log.warning(f"DEPEG CIRCUIT BREAKER ACTIVE: USDC/USD = {usdc_rate:.4f} (deviation: {deviation:.4f}, {len(rates)} sources)")
+                    log.warning(f"DEPEG CIRCUIT BREAKER ACTIVE: USDC/USD = {usdc_rate:.4f} ({len(rates)} sources)")
                 _depeg_active = True
                 return {"pegged": False, "rate": usdc_rate, "sources": len(rates)}
             else:
@@ -345,89 +401,91 @@ async def check_depeg() -> dict:
                     log.info(f"Depeg circuit breaker cleared: USDC/USD = {usdc_rate:.4f} ({len(rates)} sources)")
                 _depeg_active = False
                 return {"pegged": True, "rate": usdc_rate, "sources": len(rates)}
-                _depeg_active = False
-                return {"pegged": True, "rate": usdc_rate}
 
     except Exception as e:
         log.error(f"Depeg check error: {e}")
-        return {"pegged": not _depeg_active, "rate": None}
+        return {"pegged": not _depeg_active, "rate": None, "sources": 0}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Request Nonces (replay protection)
+# x402 Payment Verification & Settlement
 # ══════════════════════════════════════════════════════════════════════════════
 
-# In-memory nonce store (production: use Redis with TTL)
-_nonces: dict[str, float] = {}  # nonce -> created_at timestamp
-NONCE_TTL_SECONDS = 300  # 5 minutes
+async def verify_and_settle_payment(
+    x_payment_b64: str,
+    requirements: dict,
+) -> tuple[bool, str | None, dict | None]:
+    """
+    Verify and settle a payment using the CDP facilitator.
 
+    Args:
+        x_payment_b64: Base64-encoded PaymentPayload from X-PAYMENT header
+        requirements: The PaymentRequirements dict for this endpoint
 
-def create_nonce() -> str:
-    """Generate a unique request nonce."""
-    nonce = secrets.token_hex(16)
-    _nonces[nonce] = time.time()
-    # Prune expired nonces
-    now = time.time()
-    expired = [k for k, v in _nonces.items() if now - v > NONCE_TTL_SECONDS]
-    for k in expired:
-        del _nonces[k]
-    return nonce
+    Returns:
+        (success, error_message, settle_response_dict)
+    """
+    try:
+        # Decode the X-PAYMENT header
+        payload_json = base64.b64decode(x_payment_b64)
+        payload_dict = json.loads(payload_json)
+    except Exception as e:
+        return False, f"invalid_x_payment_encoding: {e}", None
 
+    # Parse into SDK types
+    try:
+        payment_payload = parse_payment_payload(payload_dict)
+    except Exception as e:
+        return False, f"invalid_payment_payload: {e}", None
 
-def validate_nonce(nonce: str) -> bool:
-    """Validate and consume a request nonce."""
-    if nonce not in _nonces:
-        return False
-    created = _nonces[nonce]
-    if time.time() - created > NONCE_TTL_SECONDS:
-        del _nonces[nonce]
-        return False
-    del _nonces[nonce]  # consume — single use
-    return True
+    # Build PaymentRequirements as SDK V1 type
+    try:
+        payment_requirements = PaymentRequirementsV1(**requirements)
+    except Exception as e:
+        return False, f"invalid_payment_requirements: {e}", None
 
+    # Step 1: Verify via facilitator
+    try:
+        verify_resp: VerifyResponse = await facilitator_client.verify(
+            payment_payload, payment_requirements
+        )
+    except Exception as e:
+        log.error(f"Facilitator verify error: {e}")
+        return False, f"facilitator_verify_error: {e}", None
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Async Payment Confirmation (background task)
-# ══════════════════════════════════════════════════════════════════════════════
+    if not verify_resp.is_valid:
+        reason = verify_resp.invalid_reason or "unknown"
+        log.warning(f"Payment verification failed: {reason}")
+        return False, f"verification_failed: {reason}", None
 
-# Pending payments to confirm asynchronously
-_pending_confirmations: list[dict] = []
+    # Step 2: Settle via facilitator
+    try:
+        settle_resp: SettleResponse = await facilitator_client.settle(
+            payment_payload, payment_requirements
+        )
+    except Exception as e:
+        log.error(f"Facilitator settle error: {e}")
+        return False, f"facilitator_settle_error: {e}", None
 
+    if not settle_resp.success:
+        reason = settle_resp.error_reason or "unknown"
+        log.warning(f"Payment settlement failed: {reason}")
+        return False, f"settlement_failed: {reason}", None
 
-async def process_pending_confirmations():
-    """Background task: check pending payments for confirmation or failure."""
-    confirmed = []
-    for entry in _pending_confirmations:
-        if time.time() - entry["created_at"] > 300:  # 5 minute timeout
-            record_failure(entry["from_address"])
-            log.warning(f"Payment timeout: {entry['tx_hash']} from {entry['from_address']}")
-            confirmed.append(entry)
-            continue
-
-        result = await verify_usdc_transfer(entry["tx_hash"], entry["expected_amount"])
-        if result["confirmed"]:
-            if result["valid"]:
-                record_success(entry["from_address"])
-                log.info(f"Payment confirmed: {entry['tx_hash']}")
-            else:
-                record_failure(entry["from_address"])
-                log.warning(f"Payment failed: {entry['tx_hash']} - {result['error']}")
-            confirmed.append(entry)
-
-    for entry in confirmed:
-        _pending_confirmations.remove(entry)
+    log.info(f"Payment settled: tx={settle_resp.transaction} network={settle_resp.network}")
+    return True, None, settle_resp.model_dump()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FastAPI Application
 # ══════════════════════════════════════════════════════════════════════════════
 
-app = FastAPI(title="SHO — Sovereign HTTP Oracle", version="0.1.0")
+app = FastAPI(title="SHO — Sovereign HTTP Oracle", version="0.2.0")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "protocol": "x402", "version": "0.1.0"}
+    return {"status": "ok", "protocol": "x402", "version": "0.2.0"}
 
 
 @app.get("/sho/info")
@@ -436,23 +494,30 @@ async def sho_info():
     depeg = await check_depeg()
     return {
         "protocol": "x402",
-        "version": "0.1.0",
+        "version": "0.2.0",
+        "x402Version": 1,
         "signing_scheme": "ed25519",
         "pubkey": ED25519_PK.encode(HexEncoder).decode(),
-        "payment_chain": "base",
-        "payment_asset": "USDC",
+        "payment_network": X402_NETWORK,
+        "payment_scheme": X402_SCHEME,
+        "payment_asset": USDC_CONTRACT,
         "payment_address": PAYMENT_ADDRESS,
-        "usdc_contract": USDC_CONTRACT,
+        "facilitator": CDP_FACILITATOR_URL,
         "depeg_active": not depeg["pegged"],
-        "endpoints": {path: {"price_usd": r["price_usd"]} for path, r in ROUTES.items()},
+        "endpoints": {
+            path: {
+                "price_usd": r["price_usd"],
+                "maxAmountRequired": str(int(r["price_usd"] * (10 ** USDC_DECIMALS))),
+            }
+            for path, r in ROUTES.items()
+        },
     }
 
 
 @app.get("/sho/enforcement/{address}")
 async def enforcement_status(address: str):
     """Check enforcement status for a payment address (public)."""
-    status = check_enforcement(address)
-    return status
+    return check_enforcement(address)
 
 
 @app.api_route("/{path:path}", methods=["GET"])
@@ -460,7 +525,7 @@ async def main_handler(request: Request, path: str):
     """Main x402 handler for oracle endpoints."""
     route_path = "/" + path
 
-    # Check if it's a free route
+    # ── Free routes ──
     if route_path in FREE_ROUTES:
         backend = FREE_ROUTES[route_path]
         if backend is None:
@@ -469,7 +534,7 @@ async def main_handler(request: Request, path: str):
             resp = await client.get(backend)
             return JSONResponse(resp.json())
 
-    # Check if it's a paid route
+    # ── Paid route lookup ──
     route = ROUTES.get(route_path)
     if route is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -484,89 +549,49 @@ async def main_handler(request: Request, path: str):
             "threshold": DEPEG_THRESHOLD,
         }, status_code=503)
 
-    # ── Check for x402 payment header ──
-    x402_header = request.headers.get("X-Payment") or request.headers.get("x-payment")
+    # ── Build payment requirements for this endpoint ──
+    requirements = build_payment_requirements(route_path, route)
 
-    if not x402_header:
-        # No payment — return 402 with payment requirements
-        nonce = create_nonce()
-        payment_body = {
-            "x402Version": 1,
-            "accepts": [{
-                "scheme": "exact",
-                "network": "eip155:8453",
-                "maxAmountRequired": str(int(float(route["price_usd"]) * 1_000_000)),
-                "asset": USDC_CONTRACT,
-                "payTo": PAYMENT_ADDRESS,
-                "resource": f"https://api.myceliasignal.com{request.url.path}",
-                "mimeType": "application/json",
-                "description": "Signed price attestation",
-                "outputSchema": {"input": {"type": "http", "method": "GET", "url": f"https://api.myceliasignal.com{request.url.path}"}, "output": {"type": "object", "description": "Signed price attestation with canonical verification string"}},
-                "maxTimeoutSeconds": NONCE_TTL_SECONDS,
-            }],
-            "error": "X-PAYMENT header is required",
-            "x402": {
-                "version": "1",
-                "chain": "base",
-                "asset": "USDC",
-                "contract": USDC_CONTRACT,
-                "recipient": PAYMENT_ADDRESS,
-                "amount": str(route["price_usd"]),
-                "nonce": nonce,
-                "expires_in": NONCE_TTL_SECONDS,
-            }
-        }
-        payment_header_value = base64.b64encode(json.dumps({
-            "x402Version": 1,
-            "accepts": [{
-                "scheme": "exact",
-                "network": "eip155:8453",
-                "maxAmountRequired": str(int(float(route["price_usd"]) * 1_000_000)),
-                "asset": USDC_CONTRACT,
-                "payTo": PAYMENT_ADDRESS,
-                "resource": f"https://api.myceliasignal.com{request.url.path}",
-                "mimeType": "application/json",
-                "description": "Signed price attestation",
-                "outputSchema": {"input": {"type": "http", "method": "GET", "url": f"https://api.myceliasignal.com{request.url.path}"}, "output": {"type": "object", "description": "Signed price attestation with canonical verification string"}},
-                "maxTimeoutSeconds": NONCE_TTL_SECONDS,
-            }]
-        }).encode()).decode()
-        return JSONResponse(
-            payment_body,
-            status_code=402,
-            headers={"Payment-Required": payment_header_value}
-        )
+    # ── Check for X-PAYMENT header (standard x402) ──
+    # Starlette headers are case-insensitive
+    x_payment = request.headers.get("X-PAYMENT")
 
-    # ── Parse x402 payment header ──
+    if not x_payment:
+        # No payment — return standard 402 response
+        body, headers = build_402_response(requirements)
+        return JSONResponse(body, status_code=402, headers=headers)
+
+    # ── Extract payer address from payload for enforcement ──
     try:
-        payment = json.loads(x402_header)
-        tx_hash = payment["tx_hash"]
-        nonce = payment["nonce"]
-        from_address = payment.get("from", "unknown")
-    except (json.JSONDecodeError, KeyError) as e:
-        return JSONResponse({"error": "invalid_payment_header", "detail": str(e)}, status_code=400)
-
-    # ── Validate nonce ──
-    if not validate_nonce(nonce):
-        return JSONResponse({"error": "invalid_or_expired_nonce"}, status_code=400)
+        payload_dict = json.loads(base64.b64decode(x_payment))
+        # EIP-3009 authorization contains the 'from' address
+        from_address = (
+            payload_dict.get("payload", {})
+            .get("authorization", {})
+            .get("from", "unknown")
+        )
+    except Exception:
+        from_address = "unknown"
 
     # ── Check enforcement ──
-    enforcement = check_enforcement(from_address)
-    if not enforcement["allowed"]:
-        return JSONResponse({
-            "error": "payment_address_blocked",
-            "reason": enforcement["reason"],
-            "tier": enforcement["tier"],
-        }, status_code=403)
+    if from_address != "unknown":
+        enforcement = check_enforcement(from_address)
+        if not enforcement["allowed"]:
+            return JSONResponse({
+                "error": "payment_address_blocked",
+                "reason": enforcement["reason"],
+                "tier": enforcement["tier"],
+            }, status_code=403)
 
-    # ── Verify payment (optimistic) ──
-    verification = await verify_usdc_transfer(tx_hash, route["price_usd"])
+    # ── Verify and settle payment via CDP facilitator ──
+    success, error, settle_resp = await verify_and_settle_payment(x_payment, requirements)
 
-    if not verification["valid"]:
-        record_failure(from_address)
+    if not success:
+        if from_address != "unknown":
+            record_failure(from_address)
         return JSONResponse({
             "error": "payment_verification_failed",
-            "detail": verification["error"],
+            "detail": error,
         }, status_code=402)
 
     # ── Payment accepted — fetch attestation from backend ──
@@ -585,51 +610,46 @@ async def main_handler(request: Request, path: str):
 
     ed25519_sig = ed25519_sign(canonical)
 
-    # ── Queue for async confirmation if payment was pending ──
-    if not verification["confirmed"]:
-        _pending_confirmations.append({
-            "tx_hash": tx_hash,
-            "from_address": from_address,
-            "expected_amount": route["price_usd"],
-            "created_at": time.time(),
-        })
+    if from_address != "unknown":
+        record_success(from_address)
 
-    record_success(from_address)
+    # ── Build X-PAYMENT-RESPONSE header ──
+    payment_response = settle_resp if settle_resp else {}
+
+    payment_response_header = base64.b64encode(
+        json.dumps(payment_response).encode()
+    ).decode()
 
     # ── Return attestation with Ed25519 signature ──
-    return JSONResponse({
-        "domain": backend_data.get("domain", ""),
-        "canonical": canonical,
-        "signature": ed25519_sig,
-        "signing_scheme": "ed25519",
-        "pubkey": ED25519_PK.encode(HexEncoder).decode(),
-        "payment": {
-            "protocol": "x402",
-            "tx_hash": tx_hash,
-            "confirmed": verification["confirmed"],
+    return JSONResponse(
+        {
+            "domain": backend_data.get("domain", ""),
+            "canonical": canonical,
+            "signature": ed25519_sig,
+            "signing_scheme": "ed25519",
+            "pubkey": ED25519_PK.encode(HexEncoder).decode(),
+            "payment": {
+                "protocol": "x402",
+                "network": X402_NETWORK,
+                "settled": True,
+            },
         },
-    })
+        headers={
+            "X-PAYMENT-RESPONSE": payment_response_header,
+        },
+    )
 
 
-# ── Background task for pending confirmations ─────────────────────────────────
+# ── Startup ───────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup():
-    import asyncio
-
-    async def confirmation_loop():
-        while True:
-            try:
-                await process_pending_confirmations()
-            except Exception as e:
-                log.error(f"Confirmation loop error: {e}")
-            await asyncio.sleep(15)
-
-    asyncio.create_task(confirmation_loop())
-    log.info(f"SHO x402 Proxy starting on :{SHO_PORT}")
+    log.info(f"SHO x402 Proxy v0.2.0 starting on :{SHO_PORT}")
     log.info(f"Ed25519 pubkey: {ED25519_PK.encode(HexEncoder).decode()}")
     log.info(f"Payment address: {PAYMENT_ADDRESS}")
-    log.info(f"Base RPC: {BASE_RPC_URL}")
+    log.info(f"Network: {X402_NETWORK}")
+    log.info(f"Facilitator: {CDP_FACILITATOR_URL}")
+    log.info(f"CDP auth: {'configured' if CDP_API_KEY_ID else 'MISSING'}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -637,9 +657,16 @@ async def startup():
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    missing = []
     if not PAYMENT_ADDRESS:
-        print("ERROR: Set SHO_PAYMENT_ADDRESS environment variable")
-        print("  export SHO_PAYMENT_ADDRESS=0xYourUSDCAddressOnBase")
+        missing.append("SHO_PAYMENT_ADDRESS")
+    if not CDP_API_KEY_ID:
+        missing.append("CDP_API_KEY_ID")
+    if not CDP_API_KEY_SECRET:
+        missing.append("CDP_API_KEY_SECRET")
+
+    if missing:
+        print(f"ERROR: Missing environment variables: {', '.join(missing)}")
         exit(1)
 
     uvicorn.run(app, host="0.0.0.0", port=SHO_PORT)

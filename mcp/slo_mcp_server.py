@@ -29,8 +29,8 @@ L402_BASE = "http://104.197.109.246:8080"
 
 # x402 / SHO proxy (USDC payments on Base)
 # NOTE: Uses direct IP to bypass Cloudflare, same pattern as L402.
-# Go proxy on :8080 routes /sho/* to Python x402 proxy on :8402.
-SHO_BASE = "http://104.197.109.246/sho"
+# x402 proxy runs directly on :8402.
+SHO_BASE = "http://127.0.0.1:8402"
 
 # Oracle endpoints (routed by nginx — same backends, different payment rail)
 L402_ORACLE_URLS = {
@@ -60,7 +60,7 @@ DLC_ANNOUNCEMENTS_URL = f"https://api.myceliasignal.com/dlc/oracle/announcements
 DLC_ATTESTATIONS_URL  = f"{L402_BASE}/dlc/oracle/attestations"
 
 # SHO info/health (free)
-SHO_INFO_URL   = f"{SHO_BASE}/info"
+SHO_INFO_URL   = f"{SHO_BASE}/sho/info"
 SHO_HEALTH_URL = f"{SHO_BASE}/health"
 
 # lnget binary for L402 payments
@@ -116,10 +116,10 @@ def _fetch_sho(url):
             body = json.loads(e.read().decode())
             body["_sho_status"] = "payment_required"
             body["_sho_note"] = (
-                "This endpoint requires USDC payment on Base. "
-                "Send the specified amount to the recipient address, "
-                "then retry with X-Payment header containing "
-                '{"tx_hash": "0x...", "nonce": "...", "from": "0x..."}'
+                "This endpoint requires x402 payment (USDC on Base). "
+                "Use any x402-compatible client or SDK to sign an EIP-3009 "
+                "transferWithAuthorization and send as base64 X-PAYMENT header. "
+                "See https://api.myceliasignal.com/.well-known/x402 for details."
             )
             return body
         raise
@@ -362,7 +362,7 @@ def sho_get_enforcement(address: str) -> dict:
     """Check x402/SHO enforcement status for a Base address.
     Shows whether the address is allowed, in cooldown, or hard-blocked.
     Free endpoint — no payment required."""
-    url = f"{SHO_BASE}/enforcement/{address}"
+    url = f"{SHO_BASE}/sho/enforcement/{address}"
     return _fetch_free(url)
 
 
