@@ -65,13 +65,13 @@ curl https://api.myceliasignal.com/oracle/btcusd
 
 | Endpoint | Asset | Price (USDC) | Sources |
 |---|---|---|---|
-| `/sho/oracle/btcusd` | BTC/USD | $0.001 | 9 sources |
-| `/sho/oracle/btcusd/vwap` | BTC/USD | $0.002 | Coinbase, Kraken |
-| `/sho/oracle/ethusd` | ETH/USD | $0.001 | 5 sources |
-| `/sho/oracle/eurusd` | EUR/USD | $0.001 | 7 sources |
-| `/sho/oracle/xauusd` | XAU/USD | $0.001 | 8 sources |
-| `/sho/oracle/btceur` | BTC/EUR | $0.001 | 16 sources |
-| `/sho/oracle/solusd` | SOL/USD | $0.001 | 9 sources |
+| `/oracle/btcusd` | BTC/USD | $0.001 | 9 sources |
+| `/oracle/btcusd/vwap` | BTC/USD | $0.002 | Coinbase, Kraken |
+| `/oracle/ethusd` | ETH/USD | $0.001 | 5 sources |
+| `/oracle/eurusd` | EUR/USD | $0.001 | 7 sources |
+| `/oracle/xauusd` | XAU/USD | $0.001 | 8 sources |
+| `/oracle/btceur` | BTC/EUR | $0.001 | 16 sources |
+| `/oracle/solusd` | SOL/USD | $0.001 | 9 sources |
 
 ### x402 Flow
 
@@ -108,7 +108,7 @@ Both L402 and x402 delivery use the same oracle core — same sources, same aggr
 
 ### Safety Features
 
-- **Depeg circuit breaker:** If USDC deviates >2% from USD parity (median of 5 sources: Kraken, Bitstamp, Coinbase, Gemini, Bitfinex; minimum 2 required), x402 payment acceptance is automatically suspended
+- **Depeg circuit breaker:** If USDC deviates >2% from USD parity (median of 5 sources: Kraken, Bitstamp, Coinbase (USDT-USDC), Gemini, Bitfinex; minimum 2 required), x402 payment acceptance is automatically suspended
 - **Tiered enforcement:** Failed payments trigger a 10-minute grace cooldown (Tier 1); 10+ failures in 7 days trigger a hard block (Tier 3)
 - **Replay protection:** Single-use request nonces prevent payment replay attacks
 - **Optimistic delivery:** Attestations returned before on-chain confirmation; failed payments tracked asynchronously
@@ -296,7 +296,7 @@ Internet → Cloudflare (HTTPS) → nginx (:80) → L402 proxy (:8080)
 ```
 
 nginx routes:
-- `/oracle/*` and `/health` → L402 proxy (port 8080)
+- `/oracle/*` and `/health` → x402 proxy (port 8402)
 - `/sho/*` → x402 proxy (port 8402), with `/sho/` prefix stripped
 - `/dlc/*` → L402 proxy (port 8080)
 
