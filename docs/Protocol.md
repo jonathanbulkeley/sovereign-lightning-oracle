@@ -155,13 +155,13 @@ All endpoints are served via `https://api.myceliasignal.com` with Cloudflare TLS
 
 | Public Path | Data |
 |---|---|
-| `/sho/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
-| `/sho/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
-| `/sho/oracle/ethusd` | ETHUSD spot price (median, 5 sources) |
-| `/sho/oracle/eurusd` | EURUSD spot price (median, 7 sources) |
-| `/sho/oracle/xauusd` | XAU/USD gold spot price (median, 8 sources) |
-| `/sho/oracle/btceur` | BTC/EUR cross-rate |
-| `/sho/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
+| `/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
+| `/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
+| `/oracle/ethusd` | ETHUSD spot price (median, 5 sources) |
+| `/oracle/eurusd` | EURUSD spot price (median, 7 sources) |
+| `/oracle/xauusd` | XAU/USD gold spot price (median, 8 sources) |
+| `/oracle/btceur` | BTC/EUR cross-rate |
+| `/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
 
 Note: nginx strips the `/sho/` prefix before proxying to the x402 backend, so the x402 proxy internally handles `/oracle/*` paths.
 
@@ -170,7 +170,7 @@ Note: nginx strips the `/sho/` prefix before proxying to the x402 backend, so th
 | Public Path | Data |
 |---|---|
 | `/health` | L402 proxy health check |
-| `/sho/health` | x402 proxy health check |
+| `/health` | x402 proxy health check |
 | `/sho/info` | x402 oracle info (pubkey, endpoints, pricing) |
 | `/dlc/oracle/pubkey` | DLC oracle public key |
 | `/dlc/oracle/announcements` | DLC nonce commitments |
@@ -246,7 +246,7 @@ SHO extends the protocol with x402 payment support, accepting USDC on Base. The 
 
 ### Flow
 ```
-1. Client  →  GET /sho/oracle/btcusd       →  nginx → SHO Proxy
+1. Client  →  GET /oracle/btcusd            →  nginx → x402 Proxy
 2. Proxy   →  402 + payment requirements    →  Client
 3. Client  →  Send USDC on Base             →  Base chain
 4. Client  →  GET + X-Payment header        →  nginx → SHO Proxy
@@ -300,8 +300,8 @@ The `accepts` array follows the standard x402 PaymentRequirements schema. The `x
 
 After sending USDC on Base, the client retries with an `X-Payment` header:
 ```
-GET /sho/oracle/btcusd HTTP/1.1
-X-Payment: {"tx_hash":"0x5237...","nonce":"752c6f...","from":"0xD593..."}
+GET /oracle/btcusd HTTP/1.1
+X-PAYMENT: <base64-encoded PaymentPayload with EIP-3009 signature>
 ```
 
 ### Ed25519 Signing
@@ -326,7 +326,7 @@ def verify_ed25519(canonical: str, signature_b64: str, pubkey_hex: str) -> bool:
 
 ### Optimistic Delivery
 
-The x402 proxy returns signed attestations immediately upon receiving a valid payment header, before the transaction is confirmed on-chain. If the transaction later fails, the sending address is subject to tiered enforcement (grace cooldown → hard block).
+The x402 proxy verifies and settles payments via the CDP facilitator before returning data. EIP-3009 signatures are verified off-chain and settled on-chain by the facilitator. If verification or settlement fails, the sending address is subject to tiered enforcement (grace cooldown → hard block).
 
 ### Depeg Circuit Breaker
 

@@ -38,7 +38,7 @@ The VWAP oracle costs more because it processes full trade history rather than a
 | Endpoint | Description |
 |---|---|
 | `https://api.myceliasignal.com/health` | L402 proxy health check |
-| `https://api.myceliasignal.com/sho/health` | x402 proxy health check |
+| `https://api.myceliasignal.com/health` | x402 proxy health check |
 | `https://api.myceliasignal.com/sho/info` | x402 oracle info (pubkey, endpoints, pricing) |
 | `https://api.myceliasignal.com/dlc/oracle/pubkey` | Oracle's persistent Schnorr public key |
 | `https://api.myceliasignal.com/dlc/oracle/announcements` | List upcoming events with nonce commitments |
@@ -58,7 +58,7 @@ SHO delivers the same oracle data over the x402 payment protocol. Instead of Lig
 curl https://api.myceliasignal.com/sho/info
 
 # Request price data — returns 402 with USDC payment requirements
-curl https://api.myceliasignal.com/sho/oracle/btcusd
+curl https://api.myceliasignal.com/oracle/btcusd
 ```
 
 ### x402-gated endpoints (pay per query in USDC)
@@ -75,10 +75,10 @@ curl https://api.myceliasignal.com/sho/oracle/btcusd
 
 ### x402 Flow
 
-1. Consumer requests price data (e.g., `GET /sho/oracle/btcusd`) → oracle returns HTTP 402 with payment requirements (chain, asset, contract, amount, nonce)
-2. Consumer sends USDC to oracle's payment address on Base
-3. Consumer retries with `X-Payment` header containing transaction hash and nonce
-4. Oracle verifies payment on-chain (optimistic delivery — responds before block confirmation)
+1. Consumer requests price data (e.g., `GET /oracle/btcusd`) → oracle returns HTTP 402 with standard x402 `accepts` array
+2. Consumer signs EIP-3009 transferWithAuthorization (EIP-712 — gasless, no on-chain tx)
+3. Consumer sends base64-encoded PaymentPayload as X-PAYMENT header
+4. Proxy verifies signature and settles payment via CDP facilitator
 5. Oracle returns Ed25519-signed attestation
 
 ### x402 Response Format

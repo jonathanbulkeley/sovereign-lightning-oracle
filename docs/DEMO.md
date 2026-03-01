@@ -145,7 +145,7 @@ Two oracles. Two signatures. Two methodologies. One price you can trust.
 
 ### Step 1: Request Price Data
 ```bash
-curl -v https://api.myceliasignal.com/sho/oracle/btcusd
+curl -v https://api.myceliasignal.com/oracle/btcusd
 ```
 
 Response:
@@ -173,8 +173,8 @@ Send **0.001 USDC** to the `recipient` address on Base using any wallet (MetaMas
 
 ### Step 3: Retry with Payment Proof
 ```bash
-curl -H 'X-Payment: {"tx_hash":"0xYOUR_TX_HASH","nonce":"752c6f1f5c46e8c9031a5a4cec5db1be","from":"0xYOUR_WALLET_ADDRESS"}' \
-  https://api.myceliasignal.com/sho/oracle/btcusd
+curl -H 'X-PAYMENT: <base64-encoded PaymentPayload>' \
+  https://api.myceliasignal.com/oracle/btcusd
 ```
 
 ### Step 4: Receive Ed25519-Signed Data
@@ -187,9 +187,6 @@ curl -H 'X-Payment: {"tx_hash":"0xYOUR_TX_HASH","nonce":"752c6f1f5c46e8c9031a5a4
   "pubkey": "c40ad8cbd866189eecb7c68091a984644fb7736ef3b8d96cd31b600ef0072623",
   "payment": {
     "protocol": "x402",
-    "tx_hash": "0xYOUR_TX_HASH",
-    "confirmed": true
-  }
 }
 ```
 

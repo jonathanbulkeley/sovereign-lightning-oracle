@@ -313,8 +313,7 @@ lnget caches tokens, so repeated requests within the token validity window don't
 5. **Monitor deviation.** If oracles start diverging beyond your threshold, halt and investigate.
 
 ## x402 Integration (SHO — USDC on Base)
-
-SHO provides the same oracle data via x402 payments. Instead of Lightning, consumers pay with USDC on Base.
+SHO provides the same oracle data via the standard x402 payment protocol. Instead of Lightning sats, consumers pay with USDC on Base using EIP-3009 `transferWithAuthorization` signatures — gasless, no on-chain transaction required from the client.
 
 ### Quick Start
 ```bash
@@ -322,10 +321,34 @@ SHO provides the same oracle data via x402 payments. Instead of Lightning, consu
 curl https://api.myceliasignal.com/sho/info
 
 # Get health status (free)
-curl https://api.myceliasignal.com/sho/health
+curl https://api.myceliasignal.com/health
 
-# Request price — returns 402 with payment requirements
-curl https://api.myceliasignal.com/sho/oracle/btcusd
+# Request price — returns 402 with standard x402 accepts array
+curl https://api.myceliasignal.com/oracle/btcusd
+
+# Discovery document
+curl https://api.myceliasignal.com/.well-known/x402
+```
+
+### Standard x402 Clients (Recommended)
+
+Any standard x402 client works out of the box:
+```javascript
+// Using @x402/fetch (Node.js / TypeScript)
+import { fetchWithPayment } from "@x402/fetch";
+import { createWalletClient, http } from "viem";
+import { base } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
+
+const account = privateKeyToAccount("0x...");
+const client = createWalletClient({ account, chain: base, transport: http() });
+
+const response = await fetchWithPayment(
+  "https://api.myceliasignal.com/oracle/btcusd",
+  {}, // fetch options
+  { walletClient: client }
+);
+const data = await response.json();
 ```
 
 ### Python x402 Client
@@ -333,34 +356,93 @@ curl https://api.myceliasignal.com/sho/oracle/btcusd
 import json
 import hashlib
 import base64
+import secrets
+import time
 import requests
 
-SHO_URL = "https://api.myceliasignal.com/sho"
+ORACLE_URL = "https://api.myceliasignal.com"
 
-def fetch_x402(pair: str, tx_hash: str, from_address: str) -> dict:
-    """Full x402 flow: request → get nonce → pay USDC → retry with proof."""
+def fetch_x402(pair: str, wallet_address: str, sign_typed_data_fn) -> dict:
+    """Full standard x402 flow: request → sign EIP-712 → retry with X-PAYMENT.
 
+    Args:
+        pair: Trading pair (e.g., "btcusd")
+        wallet_address: Your Ethereum address
+        sign_typed_data_fn: Function that signs EIP-712 typed data
+            signature = sign_typed_data_fn(typed_data: dict) -> str
+    """
     # Step 1: Get payment requirements
-    r = requests.get(f"{SHO_URL}/oracle/{pair}")
+    r = requests.get(f"{ORACLE_URL}/oracle/{pair}")
     if r.status_code != 402:
         return r.json()
-    challenge = r.json()
-    # Standard x402 format — nonce is in the legacy x402 object
-    nonce = challenge["x402"]["nonce"]
-    # Note: The 402 response also includes a standard x402 "accepts" array
-    # compatible with @x402/fetch, @x402/axios, and x402scan.
 
-    # Step 2: Send USDC on Base (done externally — you provide the tx_hash)
+    body402 = r.json()
+    req = body402["accepts"][0]
 
-    # Step 3: Retry with payment proof
-    payment = json.dumps({
-        "tx_hash": tx_hash,
-        "nonce": nonce,
-        "from": from_address,
-    })
+    # Step 2: Build EIP-3009 transferWithAuthorization parameters
+    nonce = "0x" + secrets.token_hex(32)
+    valid_before = str(int(time.time()) + 300)  # 5 minutes
+
+    typed_data = {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            "TransferWithAuthorization": [
+                {"name": "from", "type": "address"},
+                {"name": "to", "type": "address"},
+                {"name": "value", "type": "uint256"},
+                {"name": "validAfter", "type": "uint256"},
+                {"name": "validBefore", "type": "uint256"},
+                {"name": "nonce", "type": "bytes32"},
+            ],
+        },
+        "primaryType": "TransferWithAuthorization",
+        "domain": {
+            "name": req["extra"]["name"],      # "USD Coin"
+            "version": req["extra"]["version"], # "2"
+            "chainId": 8453,                    # Base mainnet
+            "verifyingContract": req["asset"],
+        },
+        "message": {
+            "from": wallet_address,
+            "to": req["payTo"],
+            "value": req["maxAmountRequired"],
+            "validAfter": "0",
+            "validBefore": valid_before,
+            "nonce": nonce,
+        },
+    }
+
+    # Step 3: Sign (your wallet implementation)
+    signature = sign_typed_data_fn(typed_data)
+
+    # Step 4: Build standard PaymentPayload
+    payment_payload = {
+        "x402Version": 1,
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "payload": {
+            "signature": signature,
+            "authorization": {
+                "from": wallet_address,
+                "to": req["payTo"],
+                "value": req["maxAmountRequired"],
+                "validAfter": "0",
+                "validBefore": valid_before,
+                "nonce": nonce,
+            },
+        },
+    }
+
+    # Step 5: Base64-encode and retry
+    x_payment = base64.b64encode(json.dumps(payment_payload).encode()).decode()
     r2 = requests.get(
-        f"{SHO_URL}/oracle/{pair}",
-        headers={"X-Payment": payment},
+        f"{ORACLE_URL}/oracle/{pair}",
+        headers={"X-PAYMENT": x_payment},
     )
     return r2.json()
 
@@ -382,9 +464,9 @@ def verify_ed25519(data: dict) -> bool:
 
 | HTTP Status | Meaning | Action |
 |---|---|---|
-| 402 | Payment required | Parse requirements, send USDC, retry with X-Payment header |
+| 402 | Payment required | Parse `accepts` array, sign EIP-712, retry with `X-PAYMENT` header |
 | 200 | Success | Verify Ed25519 signature, parse data |
-| 400 | Invalid payment header or expired nonce | Re-request to get fresh nonce |
+| 400 | Invalid payment payload or signature | Check payload format matches spec |
 | 403 | Address blocked (enforcement) | Grace cooldown or hard block — check `/sho/enforcement/{address}` |
 | 503 | Depeg circuit breaker active | USDC off peg — try again later or use L402 (Lightning) instead |
 
@@ -392,7 +474,7 @@ def verify_ed25519(data: dict) -> bool:
 
 - Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL): **$0.001 USDC**
 - VWAP query: **$0.002 USDC**
-- Plus Base gas fee (~$0.001 per transaction)
+- No gas fee for the client — EIP-3009 signatures are settled by the CDP facilitator
 
 ### Choosing Between L402 and x402
 
@@ -402,5 +484,7 @@ def verify_ed25519(data: dict) -> bool:
 | You want pseudonymous payments | You want EVM-native integration |
 | You're building on Bitcoin | You're building on Base/EVM |
 | Sub-second payment finality matters | You prefer stablecoin accounting |
+| | Standard x402 SDK clients work out of the box |
 
 Both protocols return the same oracle data with the same canonical format. Only the signature scheme and payment mechanism differ.
+

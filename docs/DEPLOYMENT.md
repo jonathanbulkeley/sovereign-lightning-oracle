@@ -254,7 +254,7 @@ sudo ln -sf /etc/nginx/sites-available/mycelia-api /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**Important:** The nginx config uses three `/sho` location blocks: an exact match for `/sho/info` (passes path through), a prefix match for `/sho/enforcement/` (same), and a catch-all `/sho/` with a trailing slash on `proxy_pass` that strips the prefix so `/sho/oracle/btcusd` reaches the x402 proxy as `/oracle/btcusd`. CORS headers allow the demo page on `myceliasignal.com` to call `api.myceliasignal.com`.
+**Important:** The nginx config routes `/oracle/*` directly to the x402 proxy on port 8402. `/sho/info` and `/sho/enforcement/*` also route to 8402. CORS headers allow the demo page on `myceliasignal.com` to call `api.myceliasignal.com`.
 
 ### Cloudflare Setup
 
@@ -295,7 +295,7 @@ python3 ~/slo/repo/sho/x402_proxy.py &
 curl -v https://api.myceliasignal.com/oracle/btcusd
 
 # x402 — should return 402 with USDC payment requirements
-curl -v https://api.myceliasignal.com/sho/oracle/btcusd
+curl -v https://api.myceliasignal.com/oracle/btcusd
 
 # Free endpoints should return data directly
 curl https://api.myceliasignal.com/health
@@ -405,4 +405,4 @@ sudo systemctl start sho-x402-proxy
 5. Add the route to x402 proxy `sho/x402_proxy.py` ROUTES dict: `"/oracle/newpair": {"backend": "http://127.0.0.1:9108/oracle/newpair", "price_usd": 0.001},`
 6. Rebuild L402 proxy: `cd ~/slo-l402-proxy && go build -o slo-l402-proxy .`
 7. Start the oracle, restart both proxies
-8. Test: `curl -v https://api.myceliasignal.com/oracle/newpair` (L402) and `curl https://api.myceliasignal.com/sho/oracle/newpair` (x402)
+8. Test: `curl -v https://api.myceliasignal.com/oracle/newpair` (L402) and `curl https://api.myceliasignal.com/oracle/newpair` (x402)
