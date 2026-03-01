@@ -39,13 +39,6 @@ from fastapi.responses import JSONResponse
 from nacl.signing import SigningKey
 from nacl.encoding import HexEncoder
 
-from x402.http import HTTPFacilitatorClient
-from x402 import (
-    PaymentRequirementsV1,
-    parse_payment_payload,
-    VerifyResponse,
-    SettleResponse,
-)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -181,12 +174,6 @@ def create_cdp_auth_headers() -> dict[str, dict[str, str]]:
 # x402 Facilitator Client
 # ══════════════════════════════════════════════════════════════════════════════
 
-facilitator_config = {
-    "url": CDP_FACILITATOR_URL,
-    "create_headers": create_cdp_auth_headers,
-}
-
-facilitator_client = HTTPFacilitatorClient(config=facilitator_config)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -236,7 +223,6 @@ def build_payment_requirements(route_path: str, route: dict) -> dict:
         "resource": f"https://api.myceliasignal.com{route_path}",
         "description": route["description"],
         "mimeType": "application/json",
-        "outputSchema": None,
         "payTo": PAYMENT_ADDRESS,
         "maxTimeoutSeconds": 60,
         "asset": USDC_CONTRACT,
@@ -415,65 +401,51 @@ async def verify_and_settle_payment(
     x_payment_b64: str,
     requirements: dict,
 ) -> tuple[bool, str | None, dict | None]:
-    """
-    Verify and settle a payment using the CDP facilitator.
-
-    Args:
-        x_payment_b64: Base64-encoded PaymentPayload from X-PAYMENT header
-        requirements: The PaymentRequirements dict for this endpoint
-
-    Returns:
-        (success, error_message, settle_response_dict)
-    """
     try:
-        # Decode the X-PAYMENT header
         payload_json = base64.b64decode(x_payment_b64)
         payload_dict = json.loads(payload_json)
     except Exception as e:
         return False, f"invalid_x_payment_encoding: {e}", None
+    # Clean payload for CDP V1: only x402Version, scheme, network, payload
+    cdp_payload = {
+        "x402Version": payload_dict.get("x402Version", 1),
+        "scheme": payload_dict.get("scheme", "exact"),
+        "network": "base",
+        "payload": payload_dict.get("payload", {}),
+    }
+    cdp_requirements = dict(requirements)
+    cdp_requirements["network"] = "base"
+    auth_headers = create_cdp_auth_headers()
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            verify_resp = await client.post(
+                f"{CDP_FACILITATOR_URL}/verify",
+                json={"x402Version": 1, "paymentPayload": cdp_payload, "paymentRequirements": cdp_requirements},
+                headers={**auth_headers["verify"], "Content-Type": "application/json"},
+            )
+            if verify_resp.status_code != 200:
+                return False, f"facilitator_verify_failed ({verify_resp.status_code}): {verify_resp.text} | SENT: {json.dumps(request_body, default=str)[:1000]}", None
+            verify_data = verify_resp.json()
+            if not verify_data.get("isValid", False):
+                return False, f"verification_failed: {verify_data.get('invalidReason', 'unknown')}", None
+        except Exception as e:
+            return False, f"facilitator_verify_error: {e}", None
+        try:
+            settle_resp = await client.post(
+                f"{CDP_FACILITATOR_URL}/settle",
+                json={"x402Version": 1, "paymentPayload": cdp_payload, "paymentRequirements": cdp_requirements},
+                headers={**auth_headers["settle"], "Content-Type": "application/json"},
+            )
+            if settle_resp.status_code != 200:
+                return False, f"facilitator_settle_failed ({settle_resp.status_code}): {settle_resp.text}", None
+            settle_data = settle_resp.json()
+            if not settle_data.get("success", False):
+                return False, f"settlement_failed: {settle_data.get('errorReason', 'unknown')}", None
+        except Exception as e:
+            return False, f"facilitator_settle_error: {e}", None
+    log.info(f"Payment settled: tx={settle_data.get('transaction')} network={settle_data.get('network')}")
+    return True, None, settle_data
 
-    # Parse into SDK types
-    try:
-        payment_payload = parse_payment_payload(payload_dict)
-    except Exception as e:
-        return False, f"invalid_payment_payload: {e}", None
-
-    # Build PaymentRequirements as SDK V1 type
-    try:
-        payment_requirements = PaymentRequirementsV1(**requirements)
-    except Exception as e:
-        return False, f"invalid_payment_requirements: {e}", None
-
-    # Step 1: Verify via facilitator
-    try:
-        verify_resp: VerifyResponse = await facilitator_client.verify(
-            payment_payload, payment_requirements
-        )
-    except Exception as e:
-        log.error(f"Facilitator verify error: {e}")
-        return False, f"facilitator_verify_error: {e}", None
-
-    if not verify_resp.is_valid:
-        reason = verify_resp.invalid_reason or "unknown"
-        log.warning(f"Payment verification failed: {reason}")
-        return False, f"verification_failed: {reason}", None
-
-    # Step 2: Settle via facilitator
-    try:
-        settle_resp: SettleResponse = await facilitator_client.settle(
-            payment_payload, payment_requirements
-        )
-    except Exception as e:
-        log.error(f"Facilitator settle error: {e}")
-        return False, f"facilitator_settle_error: {e}", None
-
-    if not settle_resp.success:
-        reason = settle_resp.error_reason or "unknown"
-        log.warning(f"Payment settlement failed: {reason}")
-        return False, f"settlement_failed: {reason}", None
-
-    log.info(f"Payment settled: tx={settle_resp.transaction} network={settle_resp.network}")
-    return True, None, settle_resp.model_dump()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
