@@ -352,7 +352,7 @@ async def check_depeg() -> dict:
                 pass
 
             try:
-                r = await client.get("https://api.exchange.coinbase.com/products/USDC-USD/ticker")
+                r = await client.get("https://api.exchange.coinbase.com/products/USDT-USDC/ticker")
                 rates.append(float(r.json()["price"]))
             except Exception:
                 pass
