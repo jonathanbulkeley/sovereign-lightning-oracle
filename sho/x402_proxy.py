@@ -424,7 +424,7 @@ async def verify_and_settle_payment(
                 headers={**auth_headers["verify"], "Content-Type": "application/json"},
             )
             if verify_resp.status_code != 200:
-                return False, f"facilitator_verify_failed ({verify_resp.status_code}): {verify_resp.text} | SENT: {json.dumps(request_body, default=str)[:1000]}", None
+                return False, f"facilitator_verify_failed ({verify_resp.status_code}): {verify_resp.text} | SENT: {json.dumps(cdp_payload, default=str)[:500]}", None
             verify_data = verify_resp.json()
             if not verify_data.get("isValid", False):
                 return False, f"verification_failed: {verify_data.get('invalidReason', 'unknown')}", None
