@@ -73,7 +73,7 @@ sudo apt install -y python3 python3-pip golang-go git
 pip3 install fastapi uvicorn ecdsa requests --break-system-packages
 
 # Clone SLO
-git clone https://github.com/jonathanbulkeley/sovereign-lightning-oracle.git ~/slo
+git clone https://github.com/jonathanbulkeley/mycelia-signal-sovereign-oracle.git ~/slo
 
 # Build the L402 proxy
 mkdir -p ~/slo-l402-proxy

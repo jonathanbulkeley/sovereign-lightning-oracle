@@ -106,7 +106,7 @@ cp /tmp/admin.macaroon ~/slo/creds/
 
 ### Clone repo and set up oracles
 ```bash
-git clone https://github.com/jonathanbulkeley/sovereign-lightning-oracle.git ~/slo/repo
+git clone https://github.com/jonathanbulkeley/mycelia-signal-sovereign-oracle.git ~/slo/repo
 cp ~/slo/repo/oracle/feeds/*.py ~/slo/oracle/feeds/
 cp ~/slo/repo/oracle/liveoracle_*.py ~/slo/oracle/
 ```
