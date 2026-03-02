@@ -4,7 +4,7 @@ Pay sats. Pay USDC. Get signed data. Trust math, not middlemen.
 
 SLO is a protocol for purchasing signed, verifiable data assertions over Lightning micropayments. SHO extends the same oracle to the x402 (HTTP 402) payment protocol, accepting USDC on Base. No API keys. No accounts. No trust. Just payment and proof.
 
-BTCUSD, ETHUSD, EURUSD, XAU/USD (gold), BTC/EUR, and SOL/USD are live on Bitcoin mainnet via L402 Lightning payments — and on Base via x402 USDC payments. The oracle includes the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 5 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
+BTCUSD, ETHUSD, EURUSD, XAU/USD (gold), BTC/EUR, SOL/USD, ETH/EUR, SOL/EUR, XAU/EUR, and BTC/EUR VWAP are live on Bitcoin mainnet via L402 Lightning payments — and on Base via x402 USDC payments. The oracle includes the first production DLC oracle with L402 payment gating. The EUR/USD oracle aggregates rates from 6 central banks across 4 continents plus 2 live exchanges. The DLC attestor publishes hourly Schnorr-signed price attestations for non-custodial Bitcoin-native derivatives. The design generalizes to any metric where truth is contested and verification matters.
 
 ## Try It Now
 
@@ -14,6 +14,8 @@ curl -v https://api.myceliasignal.com/oracle/btcusd
 curl -v https://api.myceliasignal.com/oracle/ethusd
 curl -v https://api.myceliasignal.com/oracle/eurusd
 curl -v https://api.myceliasignal.com/oracle/solusd
+curl -v https://api.myceliasignal.com/oracle/etheur
+curl -v https://api.myceliasignal.com/oracle/xaueur
 ```
 
 You'll get a 402 Payment Required with a Lightning invoice. Pay it with any Lightning wallet, get a cryptographically signed price sourced from major exchanges and central banks.
@@ -23,12 +25,16 @@ You'll get a 402 Payment Required with a Lightning invoice. Pay it with any Ligh
 | Endpoint | Asset | Method | Price | Sources |
 |---|---|---|---|---|
 | `/oracle/btcusd` | BTC/USD | Spot median | 10 sats | 9 sources: Coinbase, Kraken, Bitstamp, Gemini, Bitfinex, Binance, Binance US, OKX, Gate.io |
-| `/oracle/btcusd/vwap` | BTC/USD | Volume-weighted average | 20 sats | Coinbase, Kraken |
+| `/oracle/btcusd/vwap` | BTC/USD | Volume-weighted average | 20 sats | 7 sources: Coinbase, Kraken, Bitstamp, Gemini, Bitfinex, OKX, Gate.io (5-min window) |
 | `/oracle/ethusd` | ETH/USD | Spot median | 10 sats | Coinbase, Kraken, Bitstamp, Gemini, Bitfinex |
-| `/oracle/eurusd` | EUR/USD | Spot median | 10 sats | ECB, Bank of Canada, RBA, Norges Bank, Czech National Bank, Kraken, Bitstamp |
-| `/oracle/btceur` | BTC/EUR | Cross-rate | 10 sats | Derived from BTCUSD (9 sources) / EURUSD (7 sources) |
+| `/oracle/eurusd` | EUR/USD | Spot median | 10 sats | 8 sources: ECB, ECB Direct, Bank of Canada, RBA, Norges Bank, Czech National Bank, Kraken, Bitstamp |
+| `/oracle/btceur` | BTC/EUR | Cross-rate | 10 sats | Derived from BTCUSD (9 sources) / EURUSD (8 sources) |
 | `/oracle/xauusd` | XAU/USD | Spot median | 10 sats | 8 sources: Kitco, JM Bullion, GoldBroker, Coinbase, Kraken, Gemini, Binance, OKX |
 | `/oracle/solusd` | SOL/USD | Spot median | 10 sats | 9 sources: Coinbase, Kraken, Bitstamp, Gemini, Bitfinex, Binance, OKX, Gate.io, Bybit |
+| `/oracle/etheur` | ETH/EUR | Hybrid spot | 10 sats | 4 sources: Coinbase, Kraken, Bitstamp (direct EUR) + cross-rate |
+| `/oracle/soleur` | SOL/EUR | Hybrid spot | 10 sats | 4 sources: Coinbase, Kraken, Bitstamp (direct EUR) + cross-rate |
+| `/oracle/xaueur` | XAU/EUR | Cross-rate | 10 sats | Derived from XAUUSD / EURUSD |
+| `/oracle/btceur/vwap` | BTC/EUR | VWAP cross-rate | 20 sats | Derived from BTCUSD VWAP (7 sources) / EURUSD (8 sources) |
 | `/dlc/oracle/attestations/{id}` | BTC/USD | Schnorr attestation | 1000 sats | 9 sources (same as BTCUSD spot) |
 
 The VWAP oracle costs more because it processes full trade history rather than a single last-trade price — more computation, more data, more signal. The DLC attestation costs 1000 sats because it settles real financial contracts.
@@ -66,12 +72,16 @@ curl https://api.myceliasignal.com/oracle/btcusd
 | Endpoint | Asset | Price (USDC) | Sources |
 |---|---|---|---|
 | `/oracle/btcusd` | BTC/USD | $0.001 | 9 sources |
-| `/oracle/btcusd/vwap` | BTC/USD | $0.002 | Coinbase, Kraken |
+| `/oracle/btcusd/vwap` | BTC/USD | $0.002 | 7 sources (5-min window) |
 | `/oracle/ethusd` | ETH/USD | $0.001 | 5 sources |
-| `/oracle/eurusd` | EUR/USD | $0.001 | 7 sources |
+| `/oracle/eurusd` | EUR/USD | $0.001 | 8 sources |
 | `/oracle/xauusd` | XAU/USD | $0.001 | 8 sources |
-| `/oracle/btceur` | BTC/EUR | $0.001 | 16 sources |
+| `/oracle/btceur` | BTC/EUR | $0.001 | 17 sources |
 | `/oracle/solusd` | SOL/USD | $0.001 | 9 sources |
+| `/oracle/etheur` | ETH/EUR | $0.001 | 4 sources (3 direct + cross-rate) |
+| `/oracle/soleur` | SOL/EUR | $0.001 | 4 sources (3 direct + cross-rate) |
+| `/oracle/xaueur` | XAU/EUR | $0.001 | Derived from XAUUSD / EURUSD |
+| `/oracle/btceur/vwap` | BTC/EUR | $0.002 | VWAP cross-rate (7 + 8 sources) |
 
 ### x402 Flow
 
@@ -235,18 +245,26 @@ slo/
 │   │   ├── __init__.py
 │   │   ├── btcusd.py                  # 9-source BTCUSD feed with USDT normalization
 │   │   ├── ethusd.py                  # 5-source ETH feed
-│   │   ├── eurusd.py                  # 7-source EUR/USD feed (5 central banks)
-│   │   ├── btcusd_vwap.py             # VWAP feed (Coinbase, Kraken trades)
+│   │   ├── eurusd.py                  # 8-source EUR/USD feed (6 central banks + 2 exchanges)
+│   │   ├── btcusd_vwap.py             # 7-source VWAP feed (5-min window, USDT normalization)
 │   │   ├── xauusd.py                  # 8-source XAU/USD feed (traditional + PAXG)
 │   │   ├── btceur.py                  # BTC/EUR cross-rate derivation
-│   │   └── solusd.py                  # 9-source SOL/USD feed with USDT normalization
+│   │   ├── solusd.py                  # 9-source SOL/USD feed with USDT normalization
+│   │   ├── etheur.py                  # 4-source ETH/EUR hybrid (3 direct + cross-rate)
+│   │   ├── soleur.py                  # 4-source SOL/EUR hybrid (3 direct + cross-rate)
+│   │   ├── xaueur.py                  # XAU/EUR cross-rate (XAUUSD / EURUSD)
+│   │   └── btceur_vwap.py             # BTC/EUR VWAP cross-rate
 │   ├── liveoracle_btcusd_spot.py      # BTC spot oracle (10 sats, 9 sources)
-│   ├── liveoracle_btcusd_vwap.py      # BTC VWAP oracle (20 sats, 2 sources)
+│   ├── liveoracle_btcusd_vwap.py      # BTC VWAP oracle (20 sats, 7 sources)
 │   ├── liveoracle_ethusd_spot.py      # ETH spot oracle (10 sats, 5 sources)
-│   ├── liveoracle_eurusd_spot.py      # EUR/USD oracle (10 sats, 7 sources)
+│   ├── liveoracle_eurusd_spot.py      # EUR/USD oracle (10 sats, 8 sources)
 │   ├── liveoracle_xauusd_spot.py      # Gold spot oracle (10 sats, 8 sources)
 │   ├── liveoracle_btceur_spot.py      # BTC/EUR cross-rate oracle (10 sats, 16 sources)
 │   └── liveoracle_solusd_spot.py      # SOL/USD spot oracle (10 sats, 9 sources)
+│   ├── liveoracle_etheur_spot.py      # ETH/EUR hybrid oracle (10 sats, 4 sources)
+│   ├── liveoracle_soleur_spot.py      # SOL/EUR hybrid oracle (10 sats, 4 sources)
+│   ├── liveoracle_xaueur_spot.py      # XAU/EUR cross-rate oracle (10 sats)
+│   └── liveoracle_btceur_vwap.py      # BTC/EUR VWAP oracle (20 sats)
 ├── dlc/
 │   ├── __init__.py
 │   ├── attestor.py                    # Schnorr nonce commitment & attestation
@@ -333,7 +351,7 @@ SLO does not decide which oracle is correct. That responsibility belongs to the 
 
 The oracle uses a shared core with dual delivery layers:
 
-- **Oracle servers** — Stateless FastAPI services that fetch prices, sign assertions (secp256k1), and return JSON. One per trading pair, each on its own port (9100–9107).
+- **Oracle servers** — Stateless FastAPI services that fetch prices, sign assertions (secp256k1), and return JSON. One per trading pair, each on its own port (9100–9111).
 - **L402 Proxy (SLO)** — Lightweight Go reverse proxy on port 8080. Creates Lightning invoices via LND REST API, mints L402 macaroons, verifies payment tokens, proxies to oracle backends.
 - **x402 Proxy (SHO)** — Python FastAPI proxy on port 8402. Verifies USDC payments on Base, re-signs attestations with Ed25519, handles optimistic delivery, depeg circuit breaker, and tiered enforcement.
 - **nginx** — Reverse proxy on port 80. Routes `/oracle/*` to L402, `/sho/*` to x402 (stripping prefix), `/dlc/*` to L402. Sits behind Cloudflare.
@@ -350,6 +368,9 @@ lnget -k -q https://api.myceliasignal.com/oracle/btcusd
 lnget -k -q https://api.myceliasignal.com/oracle/ethusd
 lnget -k -q https://api.myceliasignal.com/oracle/eurusd
 lnget -k -q https://api.myceliasignal.com/oracle/solusd
+lnget -k -q https://api.myceliasignal.com/oracle/etheur
+lnget -k -q https://api.myceliasignal.com/oracle/soleur
+lnget -k -q https://api.myceliasignal.com/oracle/xaueur
 ```
 
 10 sats spent, signed price received, cryptographically verified. This is what machine-payable data looks like.
@@ -385,21 +406,29 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 | Tool | Protocol | Cost | Description |
 |---|---|---|---|
 | `get_btcusd_spot` | L402 | 10 sats | Median BTC spot price from 9 sources |
-| `get_btcusd_vwap` | L402 | 20 sats | Volume-weighted average from Coinbase, Kraken |
+| `get_btcusd_vwap` | L402 | 20 sats | Volume-weighted average from 7 sources (5-min window) |
 | `get_ethusd_spot` | L402 | 10 sats | Median ETH spot price from 5 exchanges |
-| `get_eurusd_spot` | L402 | 10 sats | Median EUR/USD from 5 central banks + 2 exchanges |
+| `get_eurusd_spot` | L402 | 10 sats | Median EUR/USD from 6 central banks + 2 exchanges |
 | `get_xauusd_spot` | L402 | 10 sats | Median gold price from 8 sources |
 | `get_btceur_spot` | L402 | 10 sats | BTC/EUR cross-rate derived from BTCUSD + EURUSD |
 | `get_solusd_spot` | L402 | 10 sats | Median SOL spot price from 9 sources |
+| `get_etheur_spot` | L402 | 10 sats | ETH/EUR hybrid from 3 direct pairs + cross-rate |
+| `get_soleur_spot` | L402 | 10 sats | SOL/EUR hybrid from 3 direct pairs + cross-rate |
+| `get_xaueur_spot` | L402 | 10 sats | XAU/EUR cross-rate from XAUUSD / EURUSD |
+| `get_btceur_vwap` | L402 | 20 sats | BTC/EUR VWAP cross-rate |
 | `sho_get_info` | Free | — | x402 oracle info and endpoint listing |
 | `sho_get_health` | Free | — | x402 proxy health check |
 | `sho_get_btcusd_spot` | x402 | $0.001 | BTC/USD via x402 (returns payment instructions) |
-| `sho_get_btcusd_vwap` | x402 | $0.002 | BTC/USD VWAP via x402 |
+| `sho_get_btcusd_vwap` | x402 | $0.002 | BTC/USD VWAP via x402 (7 sources) |
 | `sho_get_ethusd_spot` | x402 | $0.001 | ETH/USD via x402 |
-| `sho_get_eurusd_spot` | x402 | $0.001 | EUR/USD via x402 |
+| `sho_get_eurusd_spot` | x402 | $0.001 | EUR/USD via x402 (8 sources) |
 | `sho_get_xauusd_spot` | x402 | $0.001 | XAU/USD via x402 |
 | `sho_get_btceur_spot` | x402 | $0.001 | BTC/EUR via x402 |
 | `sho_get_solusd_spot` | x402 | $0.001 | SOL/USD via x402 |
+| `sho_get_etheur_spot` | x402 | $0.001 | ETH/EUR via x402 |
+| `sho_get_soleur_spot` | x402 | $0.001 | SOL/EUR via x402 |
+| `sho_get_xaueur_spot` | x402 | $0.001 | XAU/EUR via x402 |
+| `sho_get_btceur_vwap` | x402 | $0.002 | BTC/EUR VWAP via x402 |
 | `get_dlc_pubkey` | Free | — | DLC oracle public key |
 | `get_dlc_status` | Free | — | DLC oracle status and stats |
 | `get_dlc_announcements` | Free | — | Upcoming DLC event announcements |
@@ -410,7 +439,7 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 - [x] BTCUSD spot oracle (median, 9 sources)
 - [x] BTCUSD VWAP oracle
 - [x] ETHUSD spot oracle (5 sources)
-- [x] EURUSD spot oracle (7 sources, 5 central banks, 4 continents)
+- [x] EURUSD spot oracle (8 sources, 6 central banks, 4 continents)
 - [x] L402 payment gating
 - [x] Mainnet deployment
 - [x] MCP server for AI agents
@@ -419,6 +448,12 @@ Claude will pay sats over Lightning and return a cryptographically signed price.
 - [x] XAU/USD gold oracle (8 sources: Kitco, JM Bullion, GoldBroker + 5 PAXG exchanges)
 - [x] BTC/EUR cross-rate oracle (derived from BTCUSD + EURUSD, 16 sources)
 - [x] SOL/USD spot oracle (9 sources: 5 USD + 4 USDT with normalization)
+- [x] ETH/EUR hybrid oracle (3 direct EUR pairs + cross-rate)
+- [x] SOL/EUR hybrid oracle (3 direct EUR pairs + cross-rate)
+- [x] XAU/EUR cross-rate oracle
+- [x] BTC/EUR VWAP cross-rate oracle
+- [x] BTCUSD VWAP expanded to 7 sources with 5-min window and USDT normalization
+- [x] EUR/USD expanded to 8 sources (added ECB Direct)
 - [x] **SHO x402 proxy — USDC payments on Base, Ed25519 signing, optimistic delivery**
 - [x] **Depeg circuit breaker (USDC/USD peg monitoring, 5 sources with median)**
 - [x] **Tiered enforcement for failed payments (grace cooldown + hard block)**
