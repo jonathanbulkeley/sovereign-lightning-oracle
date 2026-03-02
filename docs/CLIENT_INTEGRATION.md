@@ -293,7 +293,7 @@ The quorum pattern means no single oracle can deceive you. As more operators com
 
 ## Cost Management
 
-- Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL): **10 sats** (~$0.007)
+- Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL, ETH/EUR, SOL/EUR, XAU/EUR): **10 sats** (~$0.007)
 - VWAP query: **20 sats** (~$0.014)
 - DLC attestation: **1000 sats** (~$0.70)
 - Full quorum (spot + VWAP): **30 sats** (~$0.021)
@@ -472,7 +472,7 @@ def verify_ed25519(data: dict) -> bool:
 
 ### x402 Cost
 
-- Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL): **$0.001 USDC**
+- Spot query (BTC, ETH, EUR, XAU, BTC/EUR, SOL, ETH/EUR, SOL/EUR, XAU/EUR): **$0.001 USDC**
 - VWAP query: **$0.002 USDC**
 - No gas fee for the client — EIP-3009 signatures are settled by the CDP facilitator
 

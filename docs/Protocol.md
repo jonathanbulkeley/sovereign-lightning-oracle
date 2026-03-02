@@ -145,10 +145,14 @@ All endpoints are served via `https://api.myceliasignal.com` with Cloudflare TLS
 | `/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
 | `/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
 | `/oracle/ethusd` | ETHUSD spot price (median, 5 sources) |
-| `/oracle/eurusd` | EURUSD spot price (median, 7 sources) |
+| `/oracle/eurusd` | EURUSD spot price (median, 8 sources) |
 | `/oracle/xauusd` | XAU/USD gold spot price (median, 8 sources) |
 | `/oracle/btceur` | BTC/EUR cross-rate (derived from BTCUSD + EURUSD) |
 | `/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
+| `/oracle/etheur` | ETH/EUR hybrid spot (3 direct + cross-rate) |
+| `/oracle/soleur` | SOL/EUR hybrid spot (3 direct + cross-rate) |
+| `/oracle/xaueur` | XAU/EUR cross-rate (derived from XAUUSD + EURUSD) |
+| `/oracle/btceur/vwap` | BTC/EUR VWAP cross-rate |
 | `/dlc/oracle/attestations/{id}` | DLC Schnorr attestation (1000 sats) |
 
 #### x402 endpoints (USDC on Base)
@@ -158,10 +162,14 @@ All endpoints are served via `https://api.myceliasignal.com` with Cloudflare TLS
 | `/oracle/btcusd` | BTCUSD spot price (median, 9 sources) |
 | `/oracle/btcusd/vwap` | BTCUSD volume-weighted average |
 | `/oracle/ethusd` | ETHUSD spot price (median, 5 sources) |
-| `/oracle/eurusd` | EURUSD spot price (median, 7 sources) |
+| `/oracle/eurusd` | EURUSD spot price (median, 8 sources) |
 | `/oracle/xauusd` | XAU/USD gold spot price (median, 8 sources) |
 | `/oracle/btceur` | BTC/EUR cross-rate |
 | `/oracle/solusd` | SOL/USD spot price (median, 9 sources) |
+| `/oracle/etheur` | ETH/EUR hybrid spot (3 direct + cross-rate) |
+| `/oracle/soleur` | SOL/EUR hybrid spot (3 direct + cross-rate) |
+| `/oracle/xaueur` | XAU/EUR cross-rate (derived from XAUUSD + EURUSD) |
+| `/oracle/btceur/vwap` | BTC/EUR VWAP cross-rate |
 
 Note: nginx strips the `/sho/` prefix before proxying to the x402 backend, so the x402 proxy internally handles `/oracle/*` paths.
 
