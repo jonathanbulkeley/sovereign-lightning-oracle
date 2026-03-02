@@ -30,7 +30,13 @@ ROUTES = {
     "/oracle/btcusd/vwap": {"backend": "http://127.0.0.1:9101/oracle/btcusd/vwap", "price": 20},
     "/oracle/ethusd": {"backend": "http://127.0.0.1:9102/oracle/ethusd", "price": 10},
     "/oracle/eurusd": {"backend": "http://127.0.0.1:9103/oracle/eurusd", "price": 10},
-    "/oracle/xauusd": {"backend": "http://127.0.0.1:9100/oracle/xauusd", "price": 10},
+    "/oracle/xauusd": {"backend": "http://127.0.0.1:9105/oracle/xauusd", "price": 10},
+    "/oracle/solusd": {"backend": "http://127.0.0.1:9107/oracle/solusd", "price": 10},
+    "/oracle/btceur": {"backend": "http://127.0.0.1:9106/oracle/btceur", "price": 10},
+    "/oracle/etheur": {"backend": "http://127.0.0.1:9108/oracle/etheur", "price": 10},
+    "/oracle/soleur": {"backend": "http://127.0.0.1:9109/oracle/soleur", "price": 10},
+    "/oracle/xaueur": {"backend": "http://127.0.0.1:9110/oracle/xaueur", "price": 10},
+    "/oracle/btceur/vwap": {"backend": "http://127.0.0.1:9111/oracle/btceur/vwap", "price": 20},
 }
 
 

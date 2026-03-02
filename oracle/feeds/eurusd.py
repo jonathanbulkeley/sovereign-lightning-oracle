@@ -2,6 +2,8 @@
 EURUSD Feed Module — Median of 7 sources across 4 continents
 """
 import re
+import csv
+import io
 import statistics
 import requests
 
@@ -10,6 +12,16 @@ def fetch_ecb():
     r = requests.get("https://api.frankfurter.dev/v1/latest?symbols=USD", timeout=5)
     return float(r.json()["rates"]["USD"])
 
+
+
+def fetch_ecb_direct():
+    r = requests.get(
+        "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=csvdata",
+        timeout=5,
+    )
+    reader = csv.DictReader(io.StringIO(r.text))
+    row = next(reader)
+    return float(row["OBS_VALUE"])
 
 def fetch_bank_of_canada():
     r1 = requests.get(
@@ -90,6 +102,7 @@ def fetch_bitstamp():
 
 SOURCES = [
     ("ecb", fetch_ecb),
+    ("ecb_direct", fetch_ecb_direct),
     ("bankofcanada", fetch_bank_of_canada),
     ("rba", fetch_rba),
     ("norgesbank", fetch_norges_bank),

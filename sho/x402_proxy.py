@@ -70,6 +70,10 @@ ROUTES = {
     "/oracle/xauusd":      {"backend": "http://127.0.0.1:9105/oracle/xauusd",      "price_usd": 0.001, "description": "XAU/USD spot price — Ed25519-signed attestation"},
     "/oracle/btceur":      {"backend": "http://127.0.0.1:9106/oracle/btceur",      "price_usd": 0.001, "description": "BTC/EUR spot price — Ed25519-signed attestation"},
     "/oracle/solusd":      {"backend": "http://127.0.0.1:9107/oracle/solusd",      "price_usd": 0.001, "description": "SOL/USD spot price — Ed25519-signed attestation"},
+    "/oracle/etheur":      {"backend": "http://127.0.0.1:9108/oracle/etheur",      "price_usd": 0.001, "description": "ETH/EUR spot price — Ed25519-signed attestation"},
+    "/oracle/soleur":      {"backend": "http://127.0.0.1:9109/oracle/soleur",      "price_usd": 0.001, "description": "SOL/EUR spot price — Ed25519-signed attestation"},
+    "/oracle/xaueur":      {"backend": "http://127.0.0.1:9110/oracle/xaueur",      "price_usd": 0.001, "description": "XAU/EUR spot price — Ed25519-signed attestation"},
+    "/oracle/btceur/vwap": {"backend": "http://127.0.0.1:9111/oracle/btceur/vwap",  "price_usd": 0.002, "description": "BTC/EUR VWAP — Ed25519-signed attestation"},
 }
 
 FREE_ROUTES = {

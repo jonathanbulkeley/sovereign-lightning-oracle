@@ -37,6 +37,10 @@ var routes = map[string]Route{
 	"/oracle/xauusd":      {Backend: "http://127.0.0.1:9105", Price: 10},
 	"/oracle/btceur":      {Backend: "http://127.0.0.1:9106", Price: 10},
 	"/oracle/solusd":      {Backend: "http://127.0.0.1:9107", Price: 10},
+	"/oracle/etheur":      {Backend: "http://127.0.0.1:9108", Price: 10},
+	"/oracle/soleur":      {Backend: "http://127.0.0.1:9109", Price: 10},
+	"/oracle/xaueur":      {Backend: "http://127.0.0.1:9110", Price: 10},
+	"/oracle/btceur/vwap": {Backend: "http://127.0.0.1:9111", Price: 20},
 }
 
 var freeRoutes = map[string]string{
